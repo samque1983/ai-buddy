@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI English Buddy(AI 英语搭子)
 
-## Getting Started
+以语音对话为核心的陪伴式英语学习网页应用。用户与固定 AI 角色("外国朋友")语音聊天:角色有长期记忆、独立人格,温和纠错,每天教 5 个个性化地道表达。
 
-First, run the development server:
+## 技术栈
+
+- **前端/后端**: Next.js (App Router) + TypeScript + Tailwind CSS
+- **数据库/认证**: Supabase(Postgres + 邮箱 OTP + Google 登录)
+- **语音管线**(模块化,各层可独立替换):
+  - STT: OpenAI Whisper
+  - LLM: Anthropic Claude
+  - TTS: OpenAI TTS
+- **测试**: Vitest + Testing Library
+
+## 本地启动
+
+### 1. 前置条件
+
+- Node.js >= 20
+- [Supabase CLI](https://supabase.com/docs/guides/cli)(本地数据库)+ Docker
+- API keys: Anthropic + OpenAI
+
+### 2. 安装依赖
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. 启动本地 Supabase 并初始化数据库
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+supabase start          # 启动本地 Postgres/Auth(需要 Docker)
+supabase db reset       # 跑迁移 + seed(4 个角色)
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`supabase start` 输出中的 `API URL` / `anon key` / `service_role key` 填入 `.env.local`。
 
-## Learn More
+### 4. 配置环境变量
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cp .env.example .env.local
+# 填入 Supabase 的 URL/keys 和 ANTHROPIC_API_KEY / OPENAI_API_KEY
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 5. 生成角色试听音频(一次性)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npx tsx scripts/generate-voice-previews.ts
+```
 
-## Deploy on Vercel
+### 6. 启动开发服务器
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run dev             # http://localhost:3000
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 测试
+
+```bash
+npm test                # 单次运行
+npm run test:watch      # 监听模式
+```
+
+测试不调用真实 AI 服务——所有供应商实现都有对应 fake(`tests/fakes/`)。
+
+## 目录结构
+
+```
+supabase/migrations/    数据库迁移(按序号执行)
+supabase/seed.sql       4 个角色种子数据
+src/app/                页面 + API 路由
+src/lib/services/       AI 服务封装(STT/TTS/LLM,env 切换供应商)
+src/lib/prompts/        模块化 Prompt(拼装式,非单一长字符串)
+src/lib/audio/          句子切分器 + NDJSON 编解码(纯函数)
+src/components/talk/    语音对话 UI(录音/播放队列/状态机)
+tests/                  单元测试 + API 路由测试 + fakes
+```
+
+## 部署(Vercel + Supabase 云)
+
+1. 在 [supabase.com](https://supabase.com) 创建项目,`supabase link && supabase db push` 推送迁移,在 SQL Editor 执行 `seed.sql`
+2. Supabase Dashboard → Auth → Providers 开启 Email OTP 和 Google;Redirect URLs 加入 `https://<你的域名>/auth/callback`
+3. Vercel 导入仓库,配置 `.env.example` 中所有环境变量(换成云端值)
+4. 部署后用真机走通:注册 → 选角色 → 语音对话 → 查看总结

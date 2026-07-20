@@ -1,0 +1,30 @@
+project_id = "ai-buddy"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+otp_expiry = 3600
+
+[auth.external.google]
+enabled = false
+# 启用 Google 登录时填入(secret 走环境变量,不入库):
+# client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
+# secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
