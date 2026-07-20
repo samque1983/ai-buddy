@@ -37,6 +37,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'conversation_not_active' }, { status: 400 });
   }
 
+  // Cheap daily rate limit: cap user turns per day to bound provider spend.
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  const { count: turnsToday } = await supabase
+    .from('messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('role', 'user')
+    .gte('created_at', since.toISOString())
+    .in(
+      'conversation_id',
+      (
+        await supabase
+          .from('conversations')
+          .select('id')
+          .eq('user_id', user.id)
+          .gte('started_at', since.toISOString())
+      ).data?.map((c) => c.id) ?? [],
+    );
+  if ((turnsToday ?? 0) >= 200) {
+    return NextResponse.json({ error: 'daily_limit_reached' }, { status: 429 });
+  }
+
   const ctx = await loadConversationContext(supabase, user.id);
   if (!ctx) return NextResponse.json({ error: 'setup_incomplete' }, { status: 400 });
 
