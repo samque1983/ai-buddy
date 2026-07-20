@@ -4,6 +4,9 @@ import { getServices } from '@/lib/services/factory';
 import { runConverseTurn } from '@/lib/services/converse-pipeline';
 import { buildConversationSystem } from '@/lib/prompts/builder';
 import { ndjsonResponse } from '@/lib/api/ndjson-response';
+import { ExpressionService } from '@/lib/learning/expression-service';
+import { SupabaseLearningStore } from '@/lib/learning/supabase-store';
+import { todayInTimezone } from '@/lib/streak';
 import {
   appendMessage,
   ensureDailySession,
@@ -20,8 +23,26 @@ export async function POST() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-  const ctx = await loadConversationContext(supabase, user.id);
+  let ctx = await loadConversationContext(supabase, user.id);
   if (!ctx) return NextResponse.json({ error: 'setup_incomplete' }, { status: 400 });
+
+  // Make sure today's 5 expressions exist before the greeting turn.
+  if (ctx.todaysExpressions.length === 0) {
+    try {
+      const service = new ExpressionService(
+        getServices().llm,
+        new SupabaseLearningStore(supabase),
+      );
+      const expressions = await service.getOrGenerateDaily(
+        user.id,
+        todayInTimezone(ctx.profile.timezone),
+      );
+      ctx = { ...ctx, todaysExpressions: expressions };
+    } catch (err) {
+      // Conversation still works without them; expressions can generate later.
+      console.error('expression generation failed', err);
+    }
+  }
 
   const dailySessionId = await ensureDailySession(supabase, user.id, ctx.profile.timezone);
 

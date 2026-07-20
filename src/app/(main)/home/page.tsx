@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { resolveLandingRoute } from '@/lib/routing';
+import { DailyExpressions } from '@/components/home/DailyExpressions';
 import type { Character, Profile } from '@/lib/types';
 
 export default async function HomePage() {
@@ -59,6 +60,8 @@ export default async function HomePage() {
           开始今天的对话
         </Link>
       </section>
+
+      <DailyExpressions />
     </main>
   );
 }
