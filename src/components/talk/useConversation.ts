@@ -27,6 +27,8 @@ export function useConversation() {
   const audioQueueRef = useRef<AudioQueue | null>(null);
   const streamDoneRef = useRef(true);
   const activeStreamRef = useRef<Promise<void> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const cancelledRef = useRef(false);
 
   const getQueue = useCallback(() => {
     if (!audioQueueRef.current) {
@@ -52,10 +54,27 @@ export function useConversation() {
       const queue = getQueue();
       streamDoneRef.current = false;
 
+      // Watchdog: a stalled connection must surface as an error, not a
+      // permanently disabled UI.
+      const readWithTimeout = async () => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([
+            reader.read(),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error('stream_stalled')), 30000);
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      };
+
       let assistantSoFar = '';
       while (true) {
-        const { done, value } = await reader.read();
+        const { done, value } = await readWithTimeout();
         if (done) break;
+        if (!value) continue;
         for (const event of parser.push(decoder.decode(value, { stream: true }))) {
           switch (event.type) {
             case 'stt':
@@ -103,19 +122,33 @@ export function useConversation() {
   const begin = useCallback(async () => {
     setPhase('connecting');
     setError(null);
+    cancelledRef.current = false;
     getQueue(); // create AudioContext inside the user gesture
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const res = await fetch('/api/conversations', { method: 'POST' });
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        signal: controller.signal,
+      });
       if (!res.ok) throw new Error('create failed');
       conversationIdRef.current = res.headers.get('X-Conversation-Id');
       const streaming = consumeStream(res);
       activeStreamRef.current = streaming;
       await streaming;
-    } catch {
-      setError('连接失败,请重试');
-      setPhase('error');
+    } catch (err) {
+      if (!cancelledRef.current) {
+        setError(
+          err instanceof Error && err.message === 'stream_stalled'
+            ? '连接中断了,请重新开始'
+            : '连接失败,请重试',
+        );
+        // Back to idle so the "开始对话" button is usable again.
+        setPhase('idle');
+      }
     } finally {
       activeStreamRef.current = null;
+      abortRef.current = null;
     }
   }, [consumeStream, getQueue]);
 
@@ -126,25 +159,49 @@ export function useConversation() {
       if (!conversationId) return;
       setPhase('thinking');
       setError(null);
+      cancelledRef.current = false;
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
         const form = new FormData();
         form.append('audio', blob, 'turn');
         form.append('conversationId', conversationId);
-        const res = await fetch('/api/converse', { method: 'POST', body: form });
+        const res = await fetch('/api/converse', {
+          method: 'POST',
+          body: form,
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error('converse failed');
         const streaming = consumeStream(res);
         activeStreamRef.current = streaming;
         await streaming;
-      } catch {
-        setError('发送失败,请重试');
-        setPhase('ready');
+      } catch (err) {
+        if (!cancelledRef.current) {
+          setError(
+            err instanceof Error && err.message === 'stream_stalled'
+              ? '连接中断了,请再说一次'
+              : '发送失败,请重试',
+          );
+          setPhase('ready');
+        }
       } finally {
         activeStreamRef.current = null;
+        abortRef.current = null;
       }
       void mimeType;
     },
     [consumeStream],
   );
+
+  /** Escape hatch: abort the in-flight turn and return control to the user. */
+  const cancel = useCallback(() => {
+    cancelledRef.current = true;
+    abortRef.current?.abort();
+    audioQueueRef.current?.stop();
+    streamDoneRef.current = true;
+    setError(null);
+    setPhase(conversationIdRef.current ? 'ready' : 'idle');
+  }, []);
 
   /** Stops AI speech so the user can talk. */
   const interrupt = useCallback(() => {
@@ -181,6 +238,7 @@ export function useConversation() {
     begin,
     sendAudio,
     interrupt,
+    cancel,
     end,
     conversationId: conversationIdRef,
   };

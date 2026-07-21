@@ -152,6 +152,14 @@ export default function TalkPage() {
             {PHASE_LABEL[conv.phase]}
           </button>
         )}
+        {busy && (
+          <button
+            onClick={conv.cancel}
+            className="mt-2 w-full py-1 text-center text-sm opacity-60"
+          >
+            等太久了?点此取消重试
+          </button>
+        )}
         {recorder.permissionError && (
           <p className="mt-2 text-center text-sm text-red-500">
             需要麦克风权限,请在浏览器设置中允许
