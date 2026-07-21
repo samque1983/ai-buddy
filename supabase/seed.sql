@@ -1,9 +1,9 @@
 -- The 4 launch characters. Voice ids are OpenAI TTS voices.
 insert into public.characters
-  (slug, name, tts_voice, tagline, suited_for, personality, speaking_style, correction_style, preview_text, system_prompt_fragment, sort_order)
+  (slug, name, tts_voice, preview_audio_url, tagline, suited_for, personality, speaking_style, correction_style, preview_text, system_prompt_fragment, sort_order)
 values
 (
-  'emma', 'Emma', 'nova',
+  'emma', 'Emma', 'nova', '/audio/previews/emma.mp3',
   '温柔耐心，最会鼓励人的朋友',
   '初级学习者，害怕开口的人',
   'Warm, patient, endlessly encouraging. Emma never rushes anyone and celebrates small wins.',
@@ -14,7 +14,7 @@ values
   1
 ),
 (
-  'jake', 'Jake', 'echo',
+  'jake', 'Jake', 'echo', '/audio/previews/jake.mp3',
   '阳光幽默，和他聊天像和老朋友开玩笑',
   '想练日常闲聊、放松紧张感的人',
   'Sunny, easygoing, lightly humorous. Jake makes English feel like hanging out, not studying.',
@@ -25,7 +25,7 @@ values
   2
 ),
 (
-  'sophia', 'Sophia', 'alloy',
+  'sophia', 'Sophia', 'alloy', '/audio/previews/sophia.mp3',
   '冷静知性，帮你把表达打磨得更完整',
   '中级学习者，想聊工作/电影/科技的人',
   'Calm, articulate, thoughtful. Sophia enjoys real conversations about work, films, tech and society.',
@@ -36,7 +36,7 @@ values
   3
 ),
 (
-  'leo', 'Leo', 'fable',
+  'leo', 'Leo', 'fable', '/audio/previews/leo.mp3',
   '活力满满，用小挑战带你多开口',
   '喜欢挑战、想提升反应速度的人',
   'Energetic, action-driven, loves games and challenges. Leo pushes you to speak in full sentences.',

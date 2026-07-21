@@ -51,7 +51,7 @@ export async function* runConverseTurn(
       yield { type: 'error', message: 'empty_transcription' };
       return;
     }
-    yield { type: 'stt', text: result.text };
+    yield { type: 'stt', text: result.text, durationMs: result.durationMs };
     messages.push({ role: 'user', content: result.text });
   }
 

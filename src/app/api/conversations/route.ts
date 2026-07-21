@@ -4,6 +4,7 @@ import { getServices } from '@/lib/services/factory';
 import { runConverseTurn } from '@/lib/services/converse-pipeline';
 import { buildConversationSystem } from '@/lib/prompts/builder';
 import { ndjsonResponse } from '@/lib/api/ndjson-response';
+import { chargeTurnAttempt } from '@/lib/api/rate-limit';
 import { ExpressionService } from '@/lib/learning/expression-service';
 import { SupabaseLearningStore } from '@/lib/learning/supabase-store';
 import { todayInTimezone } from '@/lib/streak';
@@ -25,6 +26,12 @@ export async function POST() {
 
   let ctx = await loadConversationContext(supabase, user.id);
   if (!ctx) return NextResponse.json({ error: 'setup_incomplete' }, { status: 400 });
+
+  // Greeting turns hit LLM+TTS too — charge them against the same daily budget.
+  const budget = await chargeTurnAttempt(supabase, todayInTimezone(ctx.profile.timezone));
+  if (budget === 'limited') {
+    return NextResponse.json({ error: 'daily_limit_reached' }, { status: 429 });
+  }
 
   // Make sure today's 5 expressions exist before the greeting turn.
   if (ctx.todaysExpressions.length === 0) {

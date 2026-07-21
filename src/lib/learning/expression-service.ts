@@ -15,6 +15,8 @@ export class ExpressionService {
   constructor(
     private llm: LlmService,
     private store: LearningStore,
+    /** Wait between polls while another request holds the generation claim. */
+    private pollMs: number = 1000,
   ) {}
 
   /** Idempotent: returns today's 5 expressions, generating them on first call of the day. */
@@ -23,38 +25,49 @@ export class ExpressionService {
     if (existing.length > 0) return existing;
 
     const session = await this.store.ensureDailySession(userId, date);
-    // Re-check after ensuring the session (cheap race guard).
-    if (session.expressions_generated) {
+
+    // Atomic claim: exactly one concurrent request generates; the rest wait.
+    const claimed = await this.store.claimExpressionGeneration(session.id);
+    if (!claimed) {
+      for (let i = 0; i < 10; i++) {
+        const rows = await this.store.getExpressionsByDate(userId, date);
+        if (rows.length > 0) return rows;
+        await new Promise((resolve) => setTimeout(resolve, this.pollMs));
+      }
       return this.store.getExpressionsByDate(userId, date);
     }
 
-    const [profile, recentCorrections, dueReviews] = await Promise.all([
-      this.store.getProfile(userId),
-      this.store.getRecentCorrections(userId, 10),
-      this.store.getDueReviews(userId, date),
-    ]);
+    try {
+      const [profile, recentCorrections, dueReviews] = await Promise.all([
+        this.store.getProfile(userId),
+        this.store.getRecentCorrections(userId, 10),
+        this.store.getDueReviews(userId, date),
+      ]);
 
-    const input = this.buildInput(profile, recentCorrections, dueReviews);
-    const result = await this.llm.extractStructured({
-      system: GENERATION_SYSTEM,
-      input,
-      schema: dailyExpressionsSchema,
-      schemaName: 'daily_expressions',
-    });
+      const input = this.buildInput(profile, recentCorrections, dueReviews);
+      const result = await this.llm.extractStructured({
+        system: GENERATION_SYSTEM,
+        input,
+        schema: dailyExpressionsSchema,
+        schemaName: 'daily_expressions',
+      });
 
-    const rows = result.expressions.map((e) => ({
-      english: e.english,
-      chinese: e.chinese,
-      scenario: e.scenario,
-      formality: e.formality,
-      example_sentence: e.example_sentence,
-      common_mistake: e.common_mistake,
-      source: { reason: e.reason },
-    }));
+      const rows = result.expressions.map((e) => ({
+        english: e.english,
+        chinese: e.chinese,
+        scenario: e.scenario,
+        formality: e.formality,
+        example_sentence: e.example_sentence,
+        common_mistake: e.common_mistake,
+        source: { reason: e.reason },
+      }));
 
-    const inserted = await this.store.insertExpressions(userId, session.id, date, rows);
-    await this.store.markExpressionsGenerated(session.id);
-    return inserted;
+      return await this.store.insertExpressions(userId, session.id, date, rows);
+    } catch (err) {
+      // Free the claim so the next request can retry generation.
+      await this.store.releaseExpressionGeneration(session.id);
+      throw err;
+    }
   }
 
   private buildInput(

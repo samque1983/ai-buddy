@@ -48,6 +48,8 @@ export interface LearningStore {
   // conversations
   getConversation(id: string): Promise<Conversation | null>;
   setConversationStatus(id: string, status: ConversationStatus): Promise<void>;
+  /** Atomic CAS ended/failed -> processing. False = someone else claimed it (or wrong state). */
+  claimConversationForProcessing(id: string): Promise<boolean>;
   saveSummary(id: string, summary: ConversationSummary, tomorrowGreeting: string): Promise<void>;
   getTranscript(conversationId: string): Promise<TranscriptRow[]>;
 
@@ -58,7 +60,11 @@ export interface LearningStore {
     userId: string,
     date: string,
   ): Promise<{ id: string; expressions_generated: boolean }>;
-  markExpressionsGenerated(dailySessionId: string): Promise<void>;
+  getDailySession(dailySessionId: string): Promise<{ id: string; date: string } | null>;
+  /** Atomic CAS expressions_generated false -> true. False = another request holds the claim. */
+  claimExpressionGeneration(dailySessionId: string): Promise<boolean>;
+  /** Releases a claim after a failed generation so a later attempt can retry. */
+  releaseExpressionGeneration(dailySessionId: string): Promise<void>;
   bumpDailySession(dailySessionId: string, talkSecondsDelta: number): Promise<void>;
 
   // expressions
@@ -76,7 +82,8 @@ export interface LearningStore {
   ): Promise<void>;
   getDueReviews(userId: string, date: string): Promise<Expression[]>;
 
-  // corrections / memories
+  // corrections / memories — save* calls OVERWRITE prior rows for the
+  // conversation so re-running finalization never duplicates them.
   getRecentCorrections(userId: string, limit: number): Promise<Correction[]>;
   saveCorrections(
     userId: string,

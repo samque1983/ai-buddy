@@ -4,6 +4,8 @@ import { getServices } from '@/lib/services/factory';
 import { runConverseTurn } from '@/lib/services/converse-pipeline';
 import { buildConversationSystem } from '@/lib/prompts/builder';
 import { ndjsonResponse } from '@/lib/api/ndjson-response';
+import { chargeTurnAttempt } from '@/lib/api/rate-limit';
+import { todayInTimezone } from '@/lib/streak';
 import {
   appendMessage,
   loadConversationContext,
@@ -37,30 +39,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'conversation_not_active' }, { status: 400 });
   }
 
-  // Cheap daily rate limit: cap user turns per day to bound provider spend.
-  const since = new Date();
-  since.setHours(0, 0, 0, 0);
-  const { count: turnsToday } = await supabase
-    .from('messages')
-    .select('id', { count: 'exact', head: true })
-    .eq('role', 'user')
-    .gte('created_at', since.toISOString())
-    .in(
-      'conversation_id',
-      (
-        await supabase
-          .from('conversations')
-          .select('id')
-          .eq('user_id', user.id)
-          .gte('started_at', since.toISOString())
-      ).data?.map((c) => c.id) ?? [],
-    );
-  if ((turnsToday ?? 0) >= 200) {
-    return NextResponse.json({ error: 'daily_limit_reached' }, { status: 429 });
-  }
-
   const ctx = await loadConversationContext(supabase, user.id);
   if (!ctx) return NextResponse.json({ error: 'setup_incomplete' }, { status: 400 });
+
+  // Charge this attempt BEFORE any paid provider call (counts empty STT too).
+  const budget = await chargeTurnAttempt(supabase, todayInTimezone(ctx.profile.timezone));
+  if (budget === 'limited') {
+    return NextResponse.json({ error: 'daily_limit_reached' }, { status: 429 });
+  }
 
   const history = await loadHistory(supabase, conversationId);
   const audio = Buffer.from(await audioFile.arrayBuffer());
@@ -78,7 +64,7 @@ export async function POST(request: Request) {
 
   return ndjsonResponse(gen, async (event) => {
     if (event.type === 'stt') {
-      await appendMessage(supabase, conversationId, 'user', event.text);
+      await appendMessage(supabase, conversationId, 'user', event.text, event.durationMs);
     } else if (event.type === 'done') {
       await appendMessage(supabase, conversationId, 'assistant', event.assistantText);
     }

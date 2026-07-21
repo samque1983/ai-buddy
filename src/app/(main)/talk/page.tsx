@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import { useConversation } from '@/components/talk/useConversation';
 import { useRecorder } from '@/components/talk/useRecorder';
 
@@ -23,6 +24,21 @@ export default function TalkPage() {
   const [subtitles, setSubtitles] = useState(true);
   const [seconds, setSeconds] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Tracks whether the pointer is still down across the async mic-permission gap.
+  const pressedRef = useRef(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('subtitles_enabled')
+        .eq('id', user.id)
+        .single<{ subtitles_enabled: boolean }>();
+      if (data) setSubtitles(data.subtitles_enabled);
+    });
+  }, []);
 
   useEffect(() => {
     if (conv.phase === 'idle' || conv.phase === 'ended') return;
@@ -37,11 +53,22 @@ export default function TalkPage() {
   async function pressStart() {
     if (conv.phase === 'speaking') conv.interrupt();
     if (conv.phase !== 'ready' && conv.phase !== 'speaking') return;
+    pressedRef.current = true;
     const ok = await recorder.start();
-    if (ok) conv.setPhase('recording');
+    if (!ok) return;
+    // The permission dialog can outlive the press: if the pointer was released
+    // while getUserMedia() was pending, stop immediately instead of recording
+    // with no pointer-up left to end it.
+    if (!pressedRef.current) {
+      await recorder.stop();
+      conv.setPhase('ready');
+      return;
+    }
+    conv.setPhase('recording');
   }
 
   async function pressEnd() {
+    pressedRef.current = false;
     if (conv.phase !== 'recording') return;
     const result = await recorder.stop();
     if (!result || result.durationMs < 300) {

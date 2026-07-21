@@ -26,6 +26,7 @@ export function useConversation() {
   const conversationIdRef = useRef<string | null>(null);
   const audioQueueRef = useRef<AudioQueue | null>(null);
   const streamDoneRef = useRef(true);
+  const activeStreamRef = useRef<Promise<void> | null>(null);
 
   const getQueue = useCallback(() => {
     if (!audioQueueRef.current) {
@@ -107,10 +108,14 @@ export function useConversation() {
       const res = await fetch('/api/conversations', { method: 'POST' });
       if (!res.ok) throw new Error('create failed');
       conversationIdRef.current = res.headers.get('X-Conversation-Id');
-      await consumeStream(res);
+      const streaming = consumeStream(res);
+      activeStreamRef.current = streaming;
+      await streaming;
     } catch {
       setError('连接失败,请重试');
       setPhase('error');
+    } finally {
+      activeStreamRef.current = null;
     }
   }, [consumeStream, getQueue]);
 
@@ -127,10 +132,14 @@ export function useConversation() {
         form.append('conversationId', conversationId);
         const res = await fetch('/api/converse', { method: 'POST', body: form });
         if (!res.ok) throw new Error('converse failed');
-        await consumeStream(res);
+        const streaming = consumeStream(res);
+        activeStreamRef.current = streaming;
+        await streaming;
       } catch {
         setError('发送失败,请重试');
         setPhase('ready');
+      } finally {
+        activeStreamRef.current = null;
       }
       void mimeType;
     },
@@ -147,6 +156,15 @@ export function useConversation() {
     const conversationId = conversationIdRef.current;
     audioQueueRef.current?.stop();
     setPhase('ended');
+    // Let an in-flight turn finish persisting before finalizing, so the
+    // summary is computed over the complete transcript (bounded wait).
+    const active = activeStreamRef.current;
+    if (active) {
+      await Promise.race([
+        active.catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, 20000)),
+      ]);
+    }
     if (conversationId) {
       await fetch(`/api/conversations/${conversationId}/finalize`, { method: 'POST' }).catch(
         () => {},

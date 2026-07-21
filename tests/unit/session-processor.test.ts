@@ -139,6 +139,41 @@ describe('SessionProcessor.finalize', () => {
     expect(store.conversations.get('conv1')!.status).toBe('failed');
   });
 
+  it('retry after failure applies accounting exactly once and never duplicates rows', async () => {
+    const { store, processor } = await setup();
+    const badLlm = new FakeLlm('unused', { totally: 'wrong shape' });
+    await expect(new SessionProcessor(badLlm, store).finalize('conv1')).rejects.toThrow();
+
+    // Failed run must not have applied accounting yet.
+    expect(store.profiles.get('u1')!.total_talk_seconds).toBe(0);
+    expect(store.dailySessions[0].conversation_count).toBe(0);
+
+    // Successful retry: everything applied exactly once.
+    await processor.finalize('conv1');
+    expect(store.conversations.get('conv1')!.status).toBe('finalized');
+    expect(store.profiles.get('u1')!.total_talk_seconds).toBe(10);
+    expect(store.dailySessions[0].conversation_count).toBe(1);
+    expect(store.corrections.filter((c) => c.conversation_id === 'conv1')).toHaveLength(1);
+    expect(store.memories).toHaveLength(1);
+  });
+
+  it('uses the conversation daily session date for expression lookup, not today', async () => {
+    const { store, processor } = await setup();
+    // Move the daily session (and its expressions) to a past date, as if the
+    // processor were running after midnight.
+    const pastDate = '2026-01-05';
+    store.dailySessions[0].date = pastDate;
+    for (const e of store.expressions) e.date = pastDate;
+
+    await processor.finalize('conv1');
+    // Expression usage was still applied even though "today" differs.
+    const e1 = store.expressions.find((x) => x.english === 'Expression 1')!;
+    const p1 = store.progress.find((p) => p.expression_id === e1.id)!;
+    expect(p1.status).toBe('practicing');
+    expect(p1.next_review_at).toBe('2026-01-06');
+    expect(store.profiles.get('u1')!.last_active_date).toBe(pastDate);
+  });
+
   it('finalizes short sessions without calling the LLM', async () => {
     const { store, llm, processor } = await setup();
     store.transcripts.set('conv1', [

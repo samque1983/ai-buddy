@@ -21,47 +21,57 @@ export class SessionProcessor {
   async finalize(conversationId: string): Promise<void> {
     const conversation = await this.store.getConversation(conversationId);
     if (!conversation) return;
-    if (conversation.status === 'finalized' || conversation.status === 'active') return;
 
-    await this.store.setConversationStatus(conversationId, 'processing');
+    // Atomic claim (ended/failed -> processing): concurrent callbacks and
+    // already-finalized conversations bail out here.
+    const claimed = await this.store.claimConversationForProcessing(conversationId);
+    if (!claimed) return;
+
     try {
-      const [transcript, profile] = await Promise.all([
+      const [transcript, profile, dailySession] = await Promise.all([
         this.store.getTranscript(conversationId),
         this.store.getProfile(conversation.user_id),
+        conversation.daily_session_id
+          ? this.store.getDailySession(conversation.daily_session_id)
+          : Promise.resolve(null),
       ]);
       if (!profile) throw new Error('profile missing');
 
-      const today = todayInTimezone(profile.timezone);
+      // The conversation belongs to its daily session's date, not to whenever
+      // this background callback happens to run (midnight/retry drift).
+      const sessionDate = dailySession?.date ?? todayInTimezone(profile.timezone);
       const userTurns = transcript.filter((m) => m.role === 'user');
       const talkSeconds = Math.round(
         userTurns.reduce((sum, m) => sum + (m.audio_duration_ms ?? 0), 0) / 1000,
       );
 
-      // Update streak + talk time regardless of transcript length.
-      const streak = computeStreak({
-        lastActiveDate: profile.last_active_date,
-        current: profile.streak_current,
-        longest: profile.streak_longest,
-        today,
-      });
-      await this.store.updateProfile(conversation.user_id, {
-        streak_current: streak.current,
-        streak_longest: streak.longest,
-        last_active_date: streak.lastActiveDate,
-        total_talk_seconds: profile.total_talk_seconds + talkSeconds,
-      });
-      if (conversation.daily_session_id) {
-        await this.store.bumpDailySession(conversation.daily_session_id, talkSeconds);
-      }
+      const applyAccounting = async () => {
+        const streak = computeStreak({
+          lastActiveDate: profile.last_active_date,
+          current: profile.streak_current,
+          longest: profile.streak_longest,
+          today: sessionDate,
+        });
+        await this.store.updateProfile(conversation.user_id, {
+          streak_current: streak.current,
+          streak_longest: streak.longest,
+          last_active_date: streak.lastActiveDate,
+          total_talk_seconds: profile.total_talk_seconds + talkSeconds,
+        });
+        if (conversation.daily_session_id) {
+          await this.store.bumpDailySession(conversation.daily_session_id, talkSeconds);
+        }
+      };
 
-      // Too short to analyze — finalize without LLM work.
+      // Too short to analyze — account and finalize without LLM work.
       if (userTurns.length === 0) {
+        await applyAccounting();
         await this.store.setConversationStatus(conversationId, 'finalized');
         return;
       }
 
       const [expressions, existingMemories] = await Promise.all([
-        this.store.getExpressionsWithProgress(conversation.user_id, today),
+        this.store.getExpressionsWithProgress(conversation.user_id, sessionDate),
         this.store.getMemories(conversation.user_id),
       ]);
 
@@ -73,6 +83,8 @@ export class SessionProcessor {
         maxTokens: 4096,
       });
 
+      // save* calls overwrite per-conversation rows, so a retry after a
+      // mid-pipeline failure never duplicates corrections or memories.
       await this.store.saveCorrections(
         conversation.user_id,
         conversationId,
@@ -95,7 +107,7 @@ export class SessionProcessor {
         const next = reviewTransition(
           { status: progress.status, review_stage: progress.review_stage },
           practiced,
-          today,
+          sessionDate,
         );
         await this.store.updateExpressionProgress(progress.id, {
           status: next.status,
@@ -106,6 +118,9 @@ export class SessionProcessor {
         });
       }
 
+      // Accounting runs last: a failure anywhere above leaves it unapplied, so
+      // the retry path can't double-count streaks or talk time.
+      await applyAccounting();
       await this.store.setConversationStatus(conversationId, 'finalized');
     } catch (err) {
       await this.store.setConversationStatus(conversationId, 'failed');

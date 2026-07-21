@@ -4,7 +4,7 @@
  */
 
 export type ConverseEvent =
-  | { type: 'stt'; text: string }
+  | { type: 'stt'; text: string; durationMs?: number }
   | { type: 'text'; text: string }
   | { type: 'audio'; b64: string; mime: string }
   | { type: 'error'; message: string }

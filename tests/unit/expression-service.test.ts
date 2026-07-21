@@ -19,7 +19,7 @@ function setup() {
   const store = new InMemoryLearningStore();
   store.profiles.set('u1', makeProfile());
   const llm = new FakeLlm('unused', structured);
-  const service = new ExpressionService(llm, store);
+  const service = new ExpressionService(llm, store, 1);
   return { store, llm, service };
 }
 
@@ -40,6 +40,30 @@ describe('ExpressionService.getOrGenerateDaily', () => {
     expect(second.map((e) => e.id)).toEqual(first.map((e) => e.id));
     expect(llm.extractCalls).toHaveLength(1);
     expect(store.expressions).toHaveLength(5);
+  });
+
+  it('never generates twice under concurrent calls (atomic claim)', async () => {
+    const { store, llm, service } = setup();
+    const [a, b] = await Promise.all([
+      service.getOrGenerateDaily('u1', '2026-07-20'),
+      service.getOrGenerateDaily('u1', '2026-07-20'),
+    ]);
+    expect(llm.extractCalls).toHaveLength(1);
+    expect(store.expressions).toHaveLength(5);
+    expect(a.map((e) => e.id).sort()).toEqual(b.map((e) => e.id).sort());
+  });
+
+  it('releases the claim when generation fails so a retry can succeed', async () => {
+    const store = new InMemoryLearningStore();
+    store.profiles.set('u1', makeProfile());
+    const badLlm = new FakeLlm('unused', { wrong: 'shape' });
+    const failing = new ExpressionService(badLlm, store, 1);
+    await expect(failing.getOrGenerateDaily('u1', '2026-07-20')).rejects.toThrow();
+    expect(store.dailySessions[0].expressions_generated).toBe(false);
+
+    const goodService = new ExpressionService(new FakeLlm('unused', structured), store, 1);
+    const rows = await goodService.getOrGenerateDaily('u1', '2026-07-20');
+    expect(rows).toHaveLength(5);
   });
 
   it('feeds recent corrections and level into the generation input', async () => {

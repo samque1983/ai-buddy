@@ -29,7 +29,7 @@ describe('runConverseTurn', () => {
       ),
     );
 
-    expect(events[0]).toEqual({ type: 'stt', text: 'I go shopping yesterday.' });
+    expect(events[0]).toEqual({ type: 'stt', text: 'I go shopping yesterday.', durationMs: 3000 });
 
     const textEvents = events.filter((e) => e.type === 'text');
     const audioEvents = events.filter((e) => e.type === 'audio');

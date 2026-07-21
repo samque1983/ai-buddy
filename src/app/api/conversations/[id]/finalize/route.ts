@@ -16,13 +16,28 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-  const { error } = await supabase
+  // CAS transition: only the request that actually flips active -> ended may
+  // schedule processing. Zero rows updated = not owned, or already ended.
+  const { data: updated, error } = await supabase
     .from('conversations')
     .update({ status: 'ended', ended_at: new Date().toISOString() })
     .eq('id', id)
     .eq('user_id', user.id)
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .select('id');
   if (error) return NextResponse.json({ error: 'update_failed' }, { status: 500 });
+
+  if (!updated || updated.length === 0) {
+    const { data: owned } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (!owned) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    // Already ended/processing — idempotent success, no duplicate job.
+    return NextResponse.json({ ok: true });
+  }
 
   after(async () => {
     try {

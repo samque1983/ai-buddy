@@ -30,6 +30,16 @@ export class SupabaseLearningStore implements LearningStore {
     await this.db.from('conversations').update({ status }).eq('id', id);
   }
 
+  async claimConversationForProcessing(id: string): Promise<boolean> {
+    const { data } = await this.db
+      .from('conversations')
+      .update({ status: 'processing' })
+      .eq('id', id)
+      .in('status', ['ended', 'failed'])
+      .select('id');
+    return (data?.length ?? 0) > 0;
+  }
+
   async saveSummary(id: string, summary: ConversationSummary, tomorrowGreeting: string) {
     await this.db
       .from('conversations')
@@ -65,10 +75,29 @@ export class SupabaseLearningStore implements LearningStore {
     return data;
   }
 
-  async markExpressionsGenerated(dailySessionId: string): Promise<void> {
-    await this.db
+  async getDailySession(dailySessionId: string): Promise<{ id: string; date: string } | null> {
+    const { data } = await this.db
+      .from('daily_sessions')
+      .select('id, date')
+      .eq('id', dailySessionId)
+      .single<{ id: string; date: string }>();
+    return data ?? null;
+  }
+
+  async claimExpressionGeneration(dailySessionId: string): Promise<boolean> {
+    const { data } = await this.db
       .from('daily_sessions')
       .update({ expressions_generated: true })
+      .eq('id', dailySessionId)
+      .eq('expressions_generated', false)
+      .select('id');
+    return (data?.length ?? 0) > 0;
+  }
+
+  async releaseExpressionGeneration(dailySessionId: string): Promise<void> {
+    await this.db
+      .from('daily_sessions')
+      .update({ expressions_generated: false })
       .eq('id', dailySessionId);
   }
 
@@ -178,6 +207,8 @@ export class SupabaseLearningStore implements LearningStore {
   }
 
   async saveCorrections(userId: string, conversationId: string, rows: NewCorrection[]) {
+    // Overwrite: a retried finalization must not duplicate rows.
+    await this.db.from('corrections').delete().eq('conversation_id', conversationId);
     if (rows.length === 0) return;
     await this.db
       .from('corrections')
@@ -195,6 +226,8 @@ export class SupabaseLearningStore implements LearningStore {
   }
 
   async saveMemories(userId: string, conversationId: string, rows: NewMemory[]) {
+    // Overwrite memories extracted from this conversation on retry.
+    await this.db.from('user_memories').delete().eq('source_conversation_id', conversationId);
     if (rows.length === 0) return;
     await this.db.from('user_memories').insert(
       rows.map((r) => ({

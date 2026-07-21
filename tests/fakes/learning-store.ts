@@ -59,6 +59,12 @@ export class InMemoryLearningStore implements LearningStore {
     const c = this.conversations.get(id);
     if (c) c.status = status;
   }
+  async claimConversationForProcessing(id: string) {
+    const c = this.conversations.get(id);
+    if (!c || (c.status !== 'ended' && c.status !== 'failed')) return false;
+    c.status = 'processing';
+    return true;
+  }
   async saveSummary(id: string, summary: ConversationSummary, tomorrowGreeting: string) {
     this.summaries.set(id, { summary, tomorrowGreeting });
     const c = this.conversations.get(id);
@@ -85,9 +91,19 @@ export class InMemoryLearningStore implements LearningStore {
     }
     return { id: s.id, expressions_generated: s.expressions_generated };
   }
-  async markExpressionsGenerated(dailySessionId: string) {
+  async getDailySession(dailySessionId: string) {
     const s = this.dailySessions.find((d) => d.id === dailySessionId);
-    if (s) s.expressions_generated = true;
+    return s ? { id: s.id, date: s.date } : null;
+  }
+  async claimExpressionGeneration(dailySessionId: string) {
+    const s = this.dailySessions.find((d) => d.id === dailySessionId);
+    if (!s || s.expressions_generated) return false;
+    s.expressions_generated = true;
+    return true;
+  }
+  async releaseExpressionGeneration(dailySessionId: string) {
+    const s = this.dailySessions.find((d) => d.id === dailySessionId);
+    if (s) s.expressions_generated = false;
   }
   async bumpDailySession(dailySessionId: string, talkSecondsDelta: number) {
     const s = this.dailySessions.find((d) => d.id === dailySessionId);
@@ -146,6 +162,7 @@ export class InMemoryLearningStore implements LearningStore {
     return this.corrections.filter((c) => c.user_id === userId).slice(-limit);
   }
   async saveCorrections(userId: string, conversationId: string, rows: NewCorrection[]) {
+    this.corrections = this.corrections.filter((c) => c.conversation_id !== conversationId);
     for (const r of rows) {
       this.corrections.push({ id: nextId(), user_id: userId, conversation_id: conversationId, ...r });
     }
@@ -154,6 +171,7 @@ export class InMemoryLearningStore implements LearningStore {
     return this.memories.filter((m) => m.user_id === userId);
   }
   async saveMemories(userId: string, conversationId: string, rows: NewMemory[]) {
+    this.memories = this.memories.filter((m) => m.source_conversation_id !== conversationId);
     for (const r of rows) {
       this.memories.push({
         id: nextId(),

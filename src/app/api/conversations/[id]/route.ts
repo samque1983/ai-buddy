@@ -31,13 +31,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     supabase.from('profiles').select('*').eq('id', user.id).single<Profile>(),
   ]);
 
-  const today = todayInTimezone(profile?.timezone ?? 'Asia/Shanghai');
-  const { data: expressions } = await supabase
-    .from('expressions')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('date', today)
-    .returns<Expression[]>();
+  // Expressions belong to the conversation's daily session, not "today" —
+  // summaries viewed after midnight must show what was actually practiced.
+  let expressionsQuery = supabase.from('expressions').select('*').eq('user_id', user.id);
+  if (conversation.daily_session_id) {
+    expressionsQuery = expressionsQuery.eq('daily_session_id', conversation.daily_session_id);
+  } else {
+    expressionsQuery = expressionsQuery.eq(
+      'date',
+      todayInTimezone(profile?.timezone ?? 'Asia/Shanghai'),
+    );
+  }
+  const { data: expressions } = await expressionsQuery.returns<Expression[]>();
 
   return NextResponse.json({
     conversation,
