@@ -81,6 +81,7 @@ export async function* runConverseTurn(
       }
       for (const sentence of chunker.flush()) enqueue(sentence);
     } catch (err) {
+      console.error('converse pipeline: LLM stream failed:', err);
       producerError = err;
     } finally {
       producerDone = true;
@@ -99,8 +100,9 @@ export async function* runConverseTurn(
       try {
         const buf = await item.audioP;
         yield { type: 'audio', b64: buf.toString('base64'), mime: 'audio/mpeg' };
-      } catch {
+      } catch (err) {
         // TTS failure for one sentence: the text is already on screen; keep going.
+        console.error('converse pipeline: TTS failed:', err);
         yield { type: 'error', message: 'tts_failed' };
       }
     } else if (producerDone) {
