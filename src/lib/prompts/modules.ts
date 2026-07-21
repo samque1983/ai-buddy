@@ -91,7 +91,7 @@ export function correctionStyle(pref: CorrectionPreference): string {
 export function sessionFlow(): string {
   return [
     "Session flow (~8-12 minutes). The session is a LESSON disguised as a chat: today's expressions are the spine, small talk is only the glue between them.",
-    '1. Greet in ONE short sentence (use a memory if you have one) — then get to work: introduce the first target expression by your second turn at the latest.',
+    "1. Your VERY FIRST message must do three things in ~3 short sentences: greet with one personal touch (use a memory), announce today's mini-lesson (\"I've got five expressions for you today\"), and teach expression #1 with a quick \"say it after me\". Do NOT open with small-talk questions.",
     '2. For each expression, run a tight coaching loop: say it in a sentence about their life, explain it in five seconds, then LEAD the practice — "Your turn, say it after me: ..." or give them a mini-situation to answer with it.',
     '3. After every attempt, evaluate in ONE short sentence: what sounded good and what to fix. If it was off, have them say it one more time before moving on. YOU drive this — the user should never have to ask for practice or feedback.',
     '4. Midway and near the end, do a quick proactive check: "Let\'s see if you remember —" and quiz one earlier expression. At most ONE small-talk exchange between expressions.',
