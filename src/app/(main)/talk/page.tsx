@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useConversation } from '@/components/talk/useConversation';
+import { useHandsFree } from '@/components/talk/useHandsFree';
 import { useRecorder } from '@/components/talk/useRecorder';
 
 const PHASE_LABEL: Record<string, string> = {
@@ -22,10 +23,23 @@ export default function TalkPage() {
   const conv = useConversation();
   const recorder = useRecorder();
   const [subtitles, setSubtitles] = useState(true);
+  const [hint, setHint] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the pointer is still down across the async mic-permission gap.
   const pressedRef = useRef(false);
+  const phaseRef = useRef(conv.phase);
+  phaseRef.current = conv.phase;
+
+  const handsFree = useHandsFree((blob, mimeType) => {
+    if (phaseRef.current === 'ready') void conv.sendAudio(blob, mimeType);
+  });
+
+  // In hands-free mode, listen only when it's the user's turn.
+  useEffect(() => {
+    if (!handsFree.enabled) return;
+    handsFree.setListening(conv.phase === 'ready');
+  }, [conv.phase, handsFree]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -50,9 +64,13 @@ export default function TalkPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [conv.transcript]);
 
-  async function pressStart() {
+  async function pressStart(e: React.PointerEvent<HTMLButtonElement>) {
+    // Keep receiving pointer events even if the finger drifts off the button —
+    // without capture, a tiny movement fires pointerleave and kills the turn.
+    e.currentTarget.setPointerCapture(e.pointerId);
     if (conv.phase === 'speaking') conv.interrupt();
     if (conv.phase !== 'ready' && conv.phase !== 'speaking') return;
+    setHint(null);
     pressedRef.current = true;
     const ok = await recorder.start();
     if (!ok) return;
@@ -62,6 +80,7 @@ export default function TalkPage() {
     if (!pressedRef.current) {
       await recorder.stop();
       conv.setPhase('ready');
+      setHint('已授权麦克风,现在按住说话吧');
       return;
     }
     conv.setPhase('recording');
@@ -73,9 +92,19 @@ export default function TalkPage() {
     const result = await recorder.stop();
     if (!result || result.durationMs < 300) {
       conv.setPhase('ready');
+      setHint('太短了,按住说完一句话再松开');
       return;
     }
     await conv.sendAudio(result.blob, result.mimeType);
+  }
+
+  async function pressAbort() {
+    // pointercancel: the system stole the gesture (scroll, alert...). Discard.
+    pressedRef.current = false;
+    if (conv.phase === 'recording') {
+      await recorder.stop();
+      conv.setPhase('ready');
+    }
   }
 
   async function endSession() {
@@ -136,22 +165,66 @@ export default function TalkPage() {
           >
             开始对话
           </button>
+        ) : handsFree.enabled ? (
+          <>
+            <button
+              onClick={() => {
+                if (conv.phase === 'speaking') conv.interrupt();
+              }}
+              disabled={busy || conv.phase === 'ended'}
+              className={`w-full rounded-2xl py-4 text-lg font-medium transition ${
+                conv.phase === 'ready'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-foreground text-background'
+              } disabled:opacity-50`}
+            >
+              {conv.phase === 'ready'
+                ? '🎙️ 聆听中…说完自动发送'
+                : conv.phase === 'speaking'
+                  ? '正在说话…(点击打断)'
+                  : PHASE_LABEL[conv.phase]}
+            </button>
+            <button
+              onClick={handsFree.disable}
+              className="mt-2 w-full py-1 text-center text-sm opacity-60"
+            >
+              退出连续对话,改用按住说话
+            </button>
+          </>
         ) : (
-          <button
-            onPointerDown={pressStart}
-            onPointerUp={pressEnd}
-            onPointerLeave={pressEnd}
-            disabled={busy || conv.phase === 'ended'}
-            className={`w-full select-none rounded-2xl py-4 text-lg font-medium transition ${
-              conv.phase === 'recording'
-                ? 'bg-red-500 text-white'
-                : 'bg-foreground text-background'
-            } disabled:opacity-50`}
-            style={{ touchAction: 'none' }}
-          >
-            {PHASE_LABEL[conv.phase]}
-          </button>
+          <>
+            <button
+              onPointerDown={pressStart}
+              onPointerUp={pressEnd}
+              onPointerCancel={pressAbort}
+              onContextMenu={(e) => e.preventDefault()}
+              disabled={busy || conv.phase === 'ended'}
+              className={`w-full select-none rounded-2xl py-4 text-lg font-medium transition ${
+                conv.phase === 'recording'
+                  ? 'bg-red-500 text-white'
+                  : 'bg-foreground text-background'
+              } disabled:opacity-50`}
+              style={{ touchAction: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
+            >
+              {PHASE_LABEL[conv.phase]}
+            </button>
+            {(conv.phase === 'ready' || conv.phase === 'speaking') && (
+              <button
+                onClick={() => void handsFree.enable()}
+                disabled={handsFree.starting}
+                className="mt-2 w-full py-1 text-center text-sm opacity-60"
+              >
+                {handsFree.starting ? '正在开启连续对话…' : '🎙️ 开启连续对话(免提,像 GPT 那样)'}
+              </button>
+            )}
+            {handsFree.failed && (
+              <p className="mt-1 text-center text-xs text-red-500">
+                连续对话开启失败,请继续使用按住说话
+              </p>
+            )}
+          </>
         )}
+        {hint && <p className="mt-2 text-center text-sm opacity-70">{hint}</p>}
         {busy && (
           <button
             onClick={conv.cancel}
