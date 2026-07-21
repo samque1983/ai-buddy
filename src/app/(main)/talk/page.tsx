@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useConversation } from '@/components/talk/useConversation';
 import { useHandsFree } from '@/components/talk/useHandsFree';
+import { useRealtime } from '@/components/talk/useRealtime';
 import { useRecorder } from '@/components/talk/useRecorder';
 
 const PHASE_LABEL: Record<string, string> = {
@@ -34,6 +35,8 @@ export default function TalkPage() {
   const handsFree = useHandsFree((blob, mimeType) => {
     if (phaseRef.current === 'ready') void conv.sendAudio(blob, mimeType);
   });
+  const rt = useRealtime();
+  const inRealtime = rt.status !== 'off';
 
   // In hands-free mode, listen only when it's the user's turn.
   useEffect(() => {
@@ -55,14 +58,16 @@ export default function TalkPage() {
   }, []);
 
   useEffect(() => {
-    if (conv.phase === 'idle' || conv.phase === 'ended') return;
+    if ((conv.phase === 'idle' || conv.phase === 'ended') && rt.status !== 'live') return;
     const t = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(t);
-  }, [conv.phase]);
+  }, [conv.phase, rt.status]);
+
+  const entries = inRealtime ? rt.transcript : conv.transcript;
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [conv.transcript]);
+  }, [entries]);
 
   async function pressStart(e: React.PointerEvent<HTMLButtonElement>) {
     // Keep receiving pointer events even if the finger drifts off the button —
@@ -108,7 +113,7 @@ export default function TalkPage() {
   }
 
   async function endSession() {
-    const id = await conv.end();
+    const id = inRealtime ? await rt.end() : await conv.end();
     router.push(id ? `/summary/${id}` : '/home');
   }
 
@@ -133,7 +138,7 @@ export default function TalkPage() {
       <div className="mt-4 flex items-center justify-center">
         <div
           className={`flex h-24 w-24 items-center justify-center rounded-full bg-black/5 text-3xl font-semibold transition-all dark:bg-white/10 ${
-            conv.phase === 'speaking' ? 'scale-110 ring-4 ring-emerald-400/50' : ''
+            conv.phase === 'speaking' || rt.speaking ? 'scale-110 ring-4 ring-emerald-400/50' : ''
           } ${conv.phase === 'recording' ? 'ring-4 ring-red-400/60' : ''}`}
         >
           🗣️
@@ -142,7 +147,7 @@ export default function TalkPage() {
 
       <div ref={scrollRef} className="mt-4 flex-1 space-y-3 overflow-y-auto">
         {subtitles &&
-          conv.transcript.map((entry, i) => (
+          entries.map((entry, i) => (
             <div
               key={i}
               className={`max-w-[85%] rounded-2xl px-4 py-2 text-[15px] leading-relaxed ${
@@ -154,17 +159,48 @@ export default function TalkPage() {
               {entry.text}
             </div>
           ))}
-        {conv.error && <p className="text-center text-sm text-red-500">{conv.error}</p>}
+        {(inRealtime ? rt.error : conv.error) && (
+          <p className="text-center text-sm text-red-500">
+            {inRealtime ? rt.error : conv.error}
+          </p>
+        )}
       </div>
 
       <div className="pb-4 pt-4">
-        {conv.phase === 'idle' ? (
-          <button
-            onClick={conv.begin}
-            className="w-full rounded-2xl bg-foreground py-4 text-lg font-medium text-background"
+        {inRealtime ? (
+          <div
+            className={`w-full rounded-2xl py-4 text-center text-lg font-medium ${
+              rt.status === 'live'
+                ? rt.speaking
+                  ? 'bg-foreground text-background'
+                  : 'bg-emerald-600 text-white'
+                : 'bg-black/10 dark:bg-white/15'
+            }`}
           >
-            开始对话
-          </button>
+            {rt.status === 'connecting'
+              ? '⚡ 连接中…'
+              : rt.status === 'error'
+                ? '连接失败'
+                : rt.speaking
+                  ? '正在说话…直接开口就能打断'
+                  : '⚡ 聆听中…直接说话吧'}
+          </div>
+        ) : conv.phase === 'idle' ? (
+          <>
+            <button
+              onClick={() => void rt.start()}
+              className="w-full rounded-2xl bg-foreground py-4 text-lg font-medium text-background"
+            >
+              ⚡ 流畅模式(推荐,像 GPT 语音)
+            </button>
+            <button
+              onClick={conv.begin}
+              className="mt-2 w-full rounded-2xl border border-black/15 py-3 font-medium dark:border-white/20"
+            >
+              普通模式(按住说话)
+            </button>
+            {rt.error && <p className="mt-2 text-center text-sm text-red-500">{rt.error}</p>}
+          </>
         ) : handsFree.enabled ? (
           <>
             <button

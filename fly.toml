@@ -15,6 +15,7 @@ primary_region = "sin"
     NEXT_PUBLIC_APP_URL = "https://ai-english-buddy.fly.dev"
 
 [env]
+  REALTIME_MODEL = "gpt-realtime-mini"
   LLM_PROVIDER = "anthropic"
   LLM_MODEL = "claude-sonnet-5"
   STT_PROVIDER = "openai"
