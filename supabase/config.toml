@@ -27,6 +27,14 @@ enable_signup = true
 enable_confirmations = false
 otp_expiry = 3600
 
+# 自定义邮件模板需要付费档或自定义 SMTP(如 Resend)。配好 SMTP 后取消注释:
+# [auth.email.template.confirmation]
+# subject = "AI English Buddy 注册验证码"
+# content_path = "./supabase/templates/confirmation.html"
+# [auth.email.template.magic_link]
+# subject = "AI English Buddy 登录验证码"
+# content_path = "./supabase/templates/magic_link.html"
+
 [auth.external.google]
 enabled = false
 # 启用 Google 登录时填入(secret 走环境变量,不入库):

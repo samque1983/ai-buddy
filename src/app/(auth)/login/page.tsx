@@ -1,44 +1,38 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
-type Stage = 'email' | 'code';
+type Stage = 'email' | 'sent';
 
-export default function LoginPage() {
-  const router = useRouter();
+function LoginForm() {
+  const searchParams = useSearchParams();
   const [stage, setStage] = useState<Stage>('email');
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    searchParams.get('error') ? '登录链接无效或已过期,请重新发送' : null,
+  );
 
-  async function sendCode(e: React.FormEvent) {
+  async function sendLink(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { error } = await createClient().auth.signInWithOtp({ email });
+    const { error } = await createClient().auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    });
     setBusy(false);
     if (error) {
-      setError('发送失败,请检查邮箱地址后重试');
+      setError(
+        error.status === 429
+          ? '发送太频繁了,请一小时后再试(免费邮件服务限流)'
+          : '发送失败,请检查邮箱地址后重试',
+      );
       return;
     }
-    setStage('code');
-  }
-
-  async function verifyCode(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    const { error } = await createClient().auth.verifyOtp({ email, token: code, type: 'email' });
-    setBusy(false);
-    if (error) {
-      setError('验证码不正确或已过期');
-      return;
-    }
-    router.replace('/');
-    router.refresh();
+    setStage('sent');
   }
 
   async function signInWithGoogle() {
@@ -58,7 +52,7 @@ export default function LoginPage() {
 
       <div className="w-full max-w-sm space-y-4">
         {stage === 'email' ? (
-          <form onSubmit={sendCode} className="space-y-3">
+          <form onSubmit={sendLink} className="space-y-3">
             <input
               type="email"
               required
@@ -72,36 +66,27 @@ export default function LoginPage() {
               disabled={busy}
               className="w-full rounded-xl bg-foreground py-3 font-medium text-background disabled:opacity-50"
             >
-              {busy ? '发送中…' : '发送验证码'}
+              {busy ? '发送中…' : '发送登录链接'}
             </button>
           </form>
         ) : (
-          <form onSubmit={verifyCode} className="space-y-3">
-            <p className="text-sm opacity-70">验证码已发送到 {email}</p>
-            <input
-              type="text"
-              inputMode="numeric"
-              required
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="6 位验证码"
-              className="w-full rounded-xl border border-black/15 bg-transparent px-4 py-3 text-center text-lg tracking-[0.4em] outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
-            />
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full rounded-xl bg-foreground py-3 font-medium text-background disabled:opacity-50"
-            >
-              {busy ? '验证中…' : '登录'}
-            </button>
+          <div className="space-y-3 text-center">
+            <p className="text-4xl">📬</p>
+            <p className="font-medium">登录链接已发送到</p>
+            <p className="text-sm opacity-70">{email}</p>
+            <p className="rounded-xl bg-black/5 px-4 py-3 text-sm leading-relaxed opacity-80 dark:bg-white/10">
+              打开邮件,点击里面的登录链接即可。
+              <br />
+              注意:请用<b>当前这个浏览器</b>打开链接(找不到邮件时看看垃圾箱)。
+            </p>
             <button
               type="button"
               onClick={() => setStage('email')}
               className="w-full py-1 text-sm opacity-60"
             >
-              换个邮箱
+              换个邮箱 / 重新发送
             </button>
-          </form>
+          </div>
         )}
 
         <div className="flex items-center gap-3 text-xs opacity-50">
@@ -120,5 +105,13 @@ export default function LoginPage() {
         {error && <p className="text-center text-sm text-red-500">{error}</p>}
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
