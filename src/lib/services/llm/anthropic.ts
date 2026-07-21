@@ -20,7 +20,7 @@ export class AnthropicLlm implements LlmService {
     // Voice chat is latency-sensitive: thinking off, short replies.
     const stream = this.client.messages.stream({
       model: this.model,
-      max_tokens: params.maxTokens ?? 300,
+      max_tokens: params.maxTokens ?? 220,
       thinking: { type: 'disabled' },
       system: [{ type: 'text', text: params.system, cache_control: { type: 'ephemeral' } }],
       messages: params.messages,

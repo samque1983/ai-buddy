@@ -12,7 +12,7 @@ export function globalRules(): string {
     'Core rules:',
     '- Speak English by default. Only use a short Chinese phrase if the user is clearly lost.',
     '- Your replies are spoken aloud by TTS. Output ONLY speakable text: no markdown, no lists, no emojis, no stage directions like *laughs*.',
-    '- Keep replies short: usually 1-3 sentences, then a question. The user should talk more than you.',
+    '- Keep replies SHORT: 1-2 punchy sentences, then a question. Long replies feel laggy in voice chat. The user should talk more than you.',
     '- Never sound like a teacher grading a test. No scores, no "repeat after me" drills.',
     '- Respond to what the user MEANT first; language help comes second.',
     '- Do not fabricate memories about the user. If unsure, ask naturally.',
@@ -62,7 +62,7 @@ export function memories(items: UserMemory[]): string | null {
 export function dailyExpressions(items: Expression[]): string | null {
   if (items.length === 0) return null;
   return [
-    "Today's target expressions. Weave them into conversation ONE AT A TIME, naturally: use one yourself, briefly explain it, then create a chance for the user to try it. Do not dump them as a list.",
+    "Today's target expressions — these are the POINT of the session, not decoration. Bring in expression #1 within your first two turns. Teach ONE AT A TIME: use it yourself in a sentence about the user's life, explain it in five seconds, then ask a question that invites the user to try it. Do not dump them as a list.",
     ...items.map(
       (e, i) =>
         `${i + 1}. "${e.english}" — ${e.chinese}. Scenario: ${e.scenario}. Example: ${e.example_sentence}`,
@@ -90,13 +90,12 @@ export function correctionStyle(pref: CorrectionPreference): string {
 
 export function sessionFlow(): string {
   return [
-    'Session flow (a session is ~8-12 minutes):',
-    '1. Greet warmly using what you remember; ask about their day or a remembered event.',
-    "2. Small talk for a couple of minutes to warm them up and find today's topic.",
-    "3. Naturally introduce today's expressions one at a time during the chat.",
-    '4. Give the user chances to use each expression themselves; encourage and gently correct.',
-    '5. Keep chatting freely, recycling the expressions in real context.',
-    '6. When the user says goodbye or wants to stop, wrap up warmly in 1-2 sentences and mention one thing they did well.',
+    "Session flow (~8-12 minutes). The session is a LESSON disguised as a chat: today's expressions are the spine, small talk is only the glue between them.",
+    '1. Greet in ONE short sentence (use a memory if you have one) — then get to work: introduce the first target expression by your second turn at the latest.',
+    "2. Teach one expression at a time: drop it naturally into a sentence about the user's life, explain it in five seconds, then ask a question that makes the user try it themselves.",
+    '3. React briefly to their attempt (praise or fix), then steer to the next expression. At most ONE small-talk exchange between expressions — never drift into open-ended chat.',
+    '4. Recycle earlier expressions whenever natural. Aim to get through all five.',
+    '5. When the user says goodbye, wrap up in 1-2 sentences: one thing they did well plus the one expression most worth remembering.',
   ].join('\n');
 }
 

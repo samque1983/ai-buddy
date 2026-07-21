@@ -35,10 +35,10 @@ export function useHandsFree(onSpeech: (blob: Blob, mimeType: string) => void) {
         model: 'v5',
         baseAssetPath: '/vad/',
         onnxWASMBasePath: '/vad/',
-        // Slightly conservative: ignore blips shorter than 250ms and wait
-        // ~1.2s of silence before cutting the utterance.
-        minSpeechMs: 250,
-        redemptionMs: 1200,
+        // Ignore blips shorter than 200ms; cut the utterance after ~0.8s of
+        // silence (snappier turn-taking; raise if it cuts users off).
+        minSpeechMs: 200,
+        redemptionMs: 800,
         onSpeechEnd: (audio: Float32Array) => {
           const wav = float32ToWav(audio, 16000);
           onSpeechRef.current(new Blob([wav], { type: 'audio/wav' }), 'audio/wav');
