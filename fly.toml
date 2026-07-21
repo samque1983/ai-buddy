@@ -9,8 +9,9 @@ primary_region = "hkg"
 [build]
   # NEXT_PUBLIC_* are baked into the client bundle at build time (public values).
   [build.args]
-    NEXT_PUBLIC_SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
-    NEXT_PUBLIC_SUPABASE_ANON_KEY = "your_anon_key_here"
+    NEXT_PUBLIC_SUPABASE_URL = "https://djkctyodgmiqdogexsee.supabase.co"
+    # anon key is a public client identifier (access is enforced by RLS)
+    NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqa2N0eW9kZ21pcWRvZ2V4c2VlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1Njc0MzEsImV4cCI6MjEwMDE0MzQzMX0.R7FNJXkM-bsZ7TK0kd2L27JjqnQoQZ6qfZovAyQfUiE"
     NEXT_PUBLIC_APP_URL = "https://ai-english-buddy.fly.dev"
 
 [env]
