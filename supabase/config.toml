@@ -15,8 +15,12 @@ port = 54323
 
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+site_url = "https://ai-english-buddy.fly.dev"
+additional_redirect_urls = [
+  "https://ai-english-buddy.fly.dev/auth/callback",
+  "http://localhost:3000",
+  "http://localhost:3000/auth/callback",
+]
 
 [auth.email]
 enable_signup = true
