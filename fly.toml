@@ -1,0 +1,33 @@
+# Fly.io deployment config.
+# First deploy:
+#   fly launch --no-deploy          # creates the app, keep this file
+#   fly secrets set SUPABASE_SERVICE_ROLE_KEY=... ANTHROPIC_API_KEY=... OPENAI_API_KEY=...
+#   fly deploy
+app = "ai-english-buddy"
+primary_region = "hkg"
+
+[build]
+  # NEXT_PUBLIC_* are baked into the client bundle at build time (public values).
+  [build.args]
+    NEXT_PUBLIC_SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
+    NEXT_PUBLIC_SUPABASE_ANON_KEY = "your_anon_key_here"
+    NEXT_PUBLIC_APP_URL = "https://ai-english-buddy.fly.dev"
+
+[env]
+  LLM_PROVIDER = "anthropic"
+  LLM_MODEL = "claude-sonnet-5"
+  STT_PROVIDER = "openai"
+  STT_MODEL = "whisper-1"
+  TTS_PROVIDER = "openai"
+  TTS_MODEL = "tts-1"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

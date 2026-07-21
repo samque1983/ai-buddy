@@ -76,9 +76,21 @@ src/components/talk/    语音对话 UI(录音/播放队列/状态机)
 tests/                  单元测试 + API 路由测试 + fakes
 ```
 
-## 部署(Vercel + Supabase 云)
+## 部署(Fly.io + Supabase 云)
 
-1. 在 [supabase.com](https://supabase.com) 创建项目,`supabase link && supabase db push` 推送迁移,在 SQL Editor 执行 `seed.sql`
-2. Supabase Dashboard → Auth → Providers 开启 Email OTP 和 Google;Redirect URLs 加入 `https://<你的域名>/auth/callback`
-3. Vercel 导入仓库,配置 `.env.example` 中所有环境变量(换成云端值)
+程序以 Docker 容器跑在 Fly.io(常驻 Node 服务,无函数时长限制,流式语音更稳);数据库和认证用 Supabase 云。
+
+1. **Supabase**:在 [supabase.com](https://supabase.com) 创建项目;`supabase link --project-ref <ref> && supabase db push` 推送迁移;SQL Editor 执行 `seed.sql`;Dashboard → Auth → Providers 开启 Email OTP(可选 Google);Redirect URLs 加入 `https://<你的域名>/auth/callback`
+2. **填 fly.toml**:把 `[build.args]` 里的 Supabase URL / anon key 换成你项目的真实值(这两个是公开值,不是密钥)
+3. **Fly.io**:
+   ```bash
+   fly launch --no-deploy      # 首次:创建 app,保留已有 fly.toml
+   fly secrets set \
+     SUPABASE_SERVICE_ROLE_KEY=... \
+     ANTHROPIC_API_KEY=... \
+     OPENAI_API_KEY=...
+   fly deploy
+   ```
 4. 部署后用真机走通:注册 → 选角色 → 语音对话 → 查看总结
+
+> 也兼容 Vercel:仓库导入后配置 `.env.example` 中所有环境变量即可,无需 Dockerfile。
