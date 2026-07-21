@@ -70,7 +70,10 @@ describe('runConverseTurn', () => {
     );
 
     expect(llm.streamCalls).toHaveLength(1);
+    // Histories starting with the character's greeting get a synthetic
+    // user kick-off so the Messages API's first-turn-must-be-user rule holds.
     expect(llm.streamCalls[0].messages).toEqual([
+      { role: 'user', content: "(I just opened the app. Greet me and start today's session.)" },
       { role: 'assistant', content: 'Hey there!' },
       { role: 'user', content: 'How do I say zaijian?' },
     ]);
@@ -92,6 +95,10 @@ describe('runConverseTurn', () => {
     expect(events.some((e) => e.type === 'stt')).toBe(false);
     expect(events.map((e) => e.type)).toEqual(['text', 'audio', 'done']);
     expect(stt.calls).toHaveLength(0);
+    // The Messages API rejects empty message arrays — greeting turns must
+    // send a synthetic user kick-off.
+    expect(llm.streamCalls[0].messages).toHaveLength(1);
+    expect(llm.streamCalls[0].messages[0].role).toBe('user');
   });
 
   it('emits an error event when STT returns empty text', async () => {

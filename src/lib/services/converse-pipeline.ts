@@ -55,6 +55,16 @@ export async function* runConverseTurn(
     messages.push({ role: 'user', content: result.text });
   }
 
+  // The Messages API requires a non-empty array starting with a user turn.
+  // Greeting turns (no audio, no history) and histories that begin with the
+  // character's greeting both need a synthetic kick-off.
+  if (messages.length === 0 || messages[0].role !== 'user') {
+    messages.unshift({
+      role: 'user',
+      content: "(I just opened the app. Greet me and start today's session.)",
+    });
+  }
+
   // Producer: read LLM stream, chunk into sentences, kick off TTS eagerly.
   const queue: { text: string; audioP: Promise<Buffer> }[] = [];
   let producerDone = false;
