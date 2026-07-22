@@ -169,11 +169,11 @@ export default function TalkPage() {
             <span>{refOpen ? '收起' : '展开'}</span>
           </button>
           {refOpen && (
-            <ul className="border-t border-black/10 px-4 py-2 dark:border-white/15">
+            <ul className="max-h-40 divide-y divide-black/5 overflow-y-auto border-t border-black/10 px-4 dark:divide-white/5 dark:border-white/15">
               {expressions.map((e) => (
-                <li key={e.id} className="flex items-baseline justify-between gap-3 py-1 text-sm">
-                  <span className="font-medium">{e.english}</span>
-                  <span className="shrink-0 opacity-60">{e.chinese}</span>
+                <li key={e.id} className="py-2 text-sm">
+                  <div className="font-medium leading-snug break-words">{e.english}</div>
+                  <div className="mt-0.5 leading-snug opacity-60 break-words">{e.chinese}</div>
                 </li>
               ))}
             </ul>
