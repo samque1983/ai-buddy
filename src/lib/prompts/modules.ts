@@ -94,6 +94,22 @@ export function reviewExpressions(items: ReviewExpression[] | undefined): string
   ].join('\n');
 }
 
+export type ExplainLanguage = 'bilingual' | 'english';
+
+export function explanationLanguage(mode: ExplainLanguage): string {
+  if (mode === 'english') {
+    return [
+      'Explanation language: ENGLISH ONLY.',
+      'Explain corrections and word meanings in simple English. Do not use Chinese unless the user is completely lost after two tries.',
+    ].join('\n');
+  }
+  return [
+    'Explanation language: KEY POINTS IN CHINESE.',
+    'Structure every correction in four beats: (1) react to their meaning in English; (2) give the correct/natural version in English; (3) explain WHY it was off in ONE short Chinese sentence (e.g. "小提醒:昨天的事要用过去式 went。"); (4) invite them to try it again in English.',
+    'The Chinese is ONLY for the "why" — keep it to one clause, never a paragraph. The model sentence and the practice stay in English. When teaching a new expression, you may also gloss its meaning with one short Chinese phrase so it lands.',
+  ].join('\n');
+}
+
 export function correctionStyle(pref: CorrectionPreference): string {
   const styles: Record<CorrectionPreference, string> = {
     light: [

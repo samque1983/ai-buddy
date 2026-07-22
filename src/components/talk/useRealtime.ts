@@ -42,11 +42,16 @@ export function useRealtime() {
     setStatus('off');
   }, []);
 
-  const start = useCallback(async (): Promise<boolean> => {
+  const start = useCallback(
+    async (opts?: { explainLanguage?: 'bilingual' | 'english' }): Promise<boolean> => {
     setStatus('connecting');
     setError(null);
     try {
-      const sessionRes = await fetch('/api/realtime/session', { method: 'POST' });
+      const sessionRes = await fetch('/api/realtime/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ explainLanguage: opts?.explainLanguage ?? 'bilingual' }),
+      });
       if (sessionRes.status === 429) throw new Error('daily_limit');
       if (!sessionRes.ok) throw new Error('session_failed');
       const { clientSecret, conversationId, model } = (await sessionRes.json()) as {
@@ -154,7 +159,9 @@ export function useRealtime() {
       );
       return false;
     }
-  }, [persist, stop]);
+    },
+    [persist, stop],
+  );
 
   /** Ends the session: closes the connection and finalizes the conversation. */
   const end = useCallback(async (): Promise<string | null> => {

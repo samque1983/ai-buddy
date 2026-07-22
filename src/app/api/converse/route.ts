@@ -39,8 +39,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'conversation_not_active' }, { status: 400 });
   }
 
-  const ctx = await loadConversationContext(supabase, user.id);
-  if (!ctx) return NextResponse.json({ error: 'setup_incomplete' }, { status: 400 });
+  const ctxBase = await loadConversationContext(supabase, user.id);
+  if (!ctxBase) return NextResponse.json({ error: 'setup_incomplete' }, { status: 400 });
+  const explainLanguage = form.get('explainLanguage') === 'english' ? 'english' : 'bilingual';
+  const ctx = { ...ctxBase, explainLanguage } as const;
 
   // Charge this attempt BEFORE any paid provider call (counts empty STT too).
   const budget = await chargeTurnAttempt(supabase, todayInTimezone(ctx.profile.timezone));

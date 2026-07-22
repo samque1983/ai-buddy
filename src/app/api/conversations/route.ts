@@ -17,15 +17,19 @@ import {
 export const maxDuration = 90;
 
 /** Creates a conversation and streams the character's greeting turn. */
-export async function POST() {
+export async function POST(request: Request) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
+  const body = (await request.json().catch(() => ({}))) as { explainLanguage?: string };
+  const explainLanguage = body.explainLanguage === 'english' ? 'english' : 'bilingual';
+
   let ctx = await loadConversationContext(supabase, user.id);
   if (!ctx) return NextResponse.json({ error: 'setup_incomplete' }, { status: 400 });
+  ctx = { ...ctx, explainLanguage };
 
   // Greeting turns hit LLM+TTS too — charge them against the same daily budget.
   const budget = await chargeTurnAttempt(supabase, todayInTimezone(ctx.profile.timezone));

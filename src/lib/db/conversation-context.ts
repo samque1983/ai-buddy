@@ -18,6 +18,7 @@ export interface ConversationContext {
   masteredCount: number;
   practicingCount: number;
   tomorrowGreetingDraft?: string;
+  explainLanguage?: 'bilingual' | 'english';
 }
 
 /** Loads everything the prompt builder needs for the current user. */

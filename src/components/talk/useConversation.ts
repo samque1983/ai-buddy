@@ -29,6 +29,7 @@ export function useConversation() {
   const activeStreamRef = useRef<Promise<void> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const cancelledRef = useRef(false);
+  const explainLanguageRef = useRef<'bilingual' | 'english'>('bilingual');
 
   const getQueue = useCallback(() => {
     if (!audioQueueRef.current) {
@@ -119,16 +120,19 @@ export function useConversation() {
   );
 
   /** Starts a conversation: character greets first. Call from a user gesture. */
-  const begin = useCallback(async () => {
+  const begin = useCallback(async (opts?: { explainLanguage?: 'bilingual' | 'english' }) => {
     setPhase('connecting');
     setError(null);
     cancelledRef.current = false;
+    explainLanguageRef.current = opts?.explainLanguage ?? 'bilingual';
     getQueue(); // create AudioContext inside the user gesture
     const controller = new AbortController();
     abortRef.current = controller;
     try {
       const res = await fetch('/api/conversations', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ explainLanguage: explainLanguageRef.current }),
         signal: controller.signal,
       });
       if (!res.ok) throw new Error('create failed');
@@ -166,6 +170,7 @@ export function useConversation() {
         const form = new FormData();
         form.append('audio', blob, 'turn');
         form.append('conversationId', conversationId);
+        form.append('explainLanguage', explainLanguageRef.current);
         const res = await fetch('/api/converse', {
           method: 'POST',
           body: form,

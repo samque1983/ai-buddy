@@ -27,15 +27,19 @@ const REALTIME_INSTRUCTIONS_SUFFIX = [
  * character persona + today's lesson, and opens a conversation row so
  * transcripts and post-session processing reuse the normal pipeline.
  */
-export async function POST() {
+export async function POST(request: Request) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
+  const body = (await request.json().catch(() => ({}))) as { explainLanguage?: string };
+  const explainLanguage = body.explainLanguage === 'english' ? 'english' : 'bilingual';
+
   let ctx = await loadConversationContext(supabase, user.id);
   if (!ctx) return NextResponse.json({ error: 'setup_incomplete' }, { status: 400 });
+  ctx = { ...ctx, explainLanguage };
 
   // A realtime session is many turns — charge a bundle up front.
   for (let i = 0; i < 5; i++) {

@@ -106,6 +106,22 @@ describe('buildConversationSystem', () => {
     expect(system.toLowerCase()).toContain('markdown');
   });
 
+  it('defaults to bilingual explanations (key points in Chinese)', () => {
+    expect(system).toContain('KEY POINTS IN CHINESE');
+  });
+
+  it('switches to English-only explanations when requested', () => {
+    const englishOnly = buildConversationSystem({
+      character,
+      profile,
+      memories,
+      todaysExpressions: expressions,
+      explainLanguage: 'english',
+    });
+    expect(englishOnly).toContain('ENGLISH ONLY');
+    expect(englishOnly).not.toContain('KEY POINTS IN CHINESE');
+  });
+
   it('omits the memory section when there are no memories', () => {
     const noMem = buildConversationSystem({
       character,

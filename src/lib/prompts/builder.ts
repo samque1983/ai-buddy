@@ -14,6 +14,8 @@ export interface ConversationContext {
   masteredCount?: number;
   practicingCount?: number;
   tomorrowGreetingDraft?: string;
+  /** How much Chinese to use when explaining. Defaults to 'bilingual'. */
+  explainLanguage?: m.ExplainLanguage;
 }
 
 /**
@@ -27,6 +29,7 @@ export function buildConversationSystem(ctx: ConversationContext): string {
     m.characterPersona(ctx.character),
     m.sessionFlow(),
     m.correctionStyle(ctx.profile.correction_preference),
+    m.explanationLanguage(ctx.explainLanguage ?? 'bilingual'),
     m.userProfile(ctx.profile),
     m.progressSnapshot(ctx.masteredCount, ctx.practicingCount),
     m.memories(ctx.memories),

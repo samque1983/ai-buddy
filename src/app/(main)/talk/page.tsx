@@ -29,6 +29,8 @@ export default function TalkPage() {
   const [seconds, setSeconds] = useState(0);
   const [expressions, setExpressions] = useState<Expression[]>([]);
   const [refOpen, setRefOpen] = useState(true);
+  // Chosen before the session starts (see the 开始对话 controls); whole-session.
+  const [chineseHelp, setChineseHelp] = useState(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the pointer is still down across the async mic-permission gap.
   const pressedRef = useRef(false);
@@ -223,14 +225,27 @@ export default function TalkPage() {
           </div>
         ) : conv.phase === 'idle' ? (
           <>
+            <label className="mb-3 flex items-center justify-center gap-2 text-sm opacity-80">
+              <input
+                type="checkbox"
+                checked={chineseHelp}
+                onChange={(e) => setChineseHelp(e.target.checked)}
+                className="h-4 w-4"
+              />
+              纠错时用中文讲解重点
+            </label>
             <button
-              onClick={() => void rt.start()}
+              onClick={() =>
+                void rt.start({ explainLanguage: chineseHelp ? 'bilingual' : 'english' })
+              }
               className="w-full rounded-2xl bg-foreground py-4 text-lg font-medium text-background"
             >
               ⚡ 流畅模式(推荐,像 GPT 语音)
             </button>
             <button
-              onClick={conv.begin}
+              onClick={() =>
+                void conv.begin({ explainLanguage: chineseHelp ? 'bilingual' : 'english' })
+              }
               className="mt-2 w-full rounded-2xl border border-black/15 py-3 font-medium dark:border-white/20"
             >
               普通模式(按住说话)
