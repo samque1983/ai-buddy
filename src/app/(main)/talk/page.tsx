@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useConversation } from '@/components/talk/useConversation';
 import { useHandsFree } from '@/components/talk/useHandsFree';
 import { useRealtime } from '@/components/talk/useRealtime';
+import { useRealtimeWs } from '@/components/talk/useRealtimeWs';
 import { useRecorder } from '@/components/talk/useRecorder';
 import { hasVoiceSupport, inAppBrowserLabel } from '@/lib/env/browser';
 import type { Expression } from '@/lib/types';
@@ -52,7 +53,12 @@ export default function TalkPage() {
   const handsFree = useHandsFree((blob, mimeType) => {
     if (phaseRef.current === 'ready') void conv.sendAudio(blob, mimeType);
   });
-  const rt = useRealtime();
+  // Feature flag (decision #8): WebRTC stays the default; the WS relay (works on
+  // China networks) is opt-in via NEXT_PUBLIC_REALTIME_TRANSPORT=ws. Both hooks run
+  // (rules of hooks); only the selected one is ever start()ed, so the other is inert.
+  const rtWebrtc = useRealtime();
+  const rtWs = useRealtimeWs();
+  const rt = process.env.NEXT_PUBLIC_REALTIME_TRANSPORT === 'ws' ? rtWs : rtWebrtc;
   const inRealtime = rt.status !== 'off';
 
   // Prewarm the realtime session while the user is on the idle screen deciding,
