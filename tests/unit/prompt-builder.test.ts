@@ -106,8 +106,8 @@ describe('buildConversationSystem', () => {
     expect(system.toLowerCase()).toContain('markdown');
   });
 
-  it('defaults to bilingual explanations (key points in Chinese)', () => {
-    expect(system).toContain('KEY POINTS IN CHINESE');
+  it('defaults to bilingual explanations (must also explain in Chinese)', () => {
+    expect(system).toContain('EXPLAIN IN CHINESE TOO');
   });
 
   it('switches to English-only explanations when requested', () => {
@@ -119,7 +119,7 @@ describe('buildConversationSystem', () => {
       explainLanguage: 'english',
     });
     expect(englishOnly).toContain('ENGLISH ONLY');
-    expect(englishOnly).not.toContain('KEY POINTS IN CHINESE');
+    expect(englishOnly).not.toContain('EXPLAIN IN CHINESE TOO');
   });
 
   it('lesson mode drills the daily expressions', () => {

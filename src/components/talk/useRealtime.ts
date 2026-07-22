@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { voiceErrorMessage } from '@/lib/env/browser';
 import type { TranscriptEntry } from './useConversation';
 
 export type RealtimeStatus = 'off' | 'connecting' | 'live' | 'error';
@@ -17,6 +18,45 @@ interface MintedSession {
 
 // Ephemeral secrets live 10 min; refuse to reuse a prewarm older than this.
 const PREWARM_MAX_AGE_MS = 8 * 60 * 1000;
+
+// A network hop in the connect path can black-hole — e.g. a device that can't
+// reach api.openai.com — which, with no timeout, spins the UI on 连接中 forever.
+// Cap every hop so it fails fast with an actionable error instead of hanging.
+const CONNECT_TIMEOUT_MS = 15000;
+
+/** fetch() that rejects with Error('connect_timeout') if it hangs past `ms`. */
+async function fetchWithTimeout(
+  input: string | URL,
+  init: RequestInit,
+  ms: number,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') throw new Error('connect_timeout');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Awaits the mic prompt but rejects with Error('mic_timeout') if it never
+ * resolves (some WebViews leave getUserMedia pending forever). If the stream
+ * arrives after we've given up, stop it so the mic isn't left hot.
+ */
+function micWithTimeout(p: Promise<MediaStream>, ms: number): Promise<MediaStream> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      p.then((s) => s.getTracks().forEach((t) => t.stop())).catch(() => {});
+      reject(new Error('mic_timeout'));
+    }, ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer)) as Promise<MediaStream>;
+}
 
 /**
  * 流畅模式: browser ↔ OpenAI Realtime over WebRTC. The server only mints an
@@ -62,11 +102,15 @@ export function useRealtime() {
 
   /** Mints a session on the server (~2-3s). No WebRTC yet. */
   const mint = useCallback(async (explainLanguage: ExplainLanguage): Promise<MintedSession> => {
-    const res = await fetch('/api/realtime/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ explainLanguage }),
-    });
+    const res = await fetchWithTimeout(
+      '/api/realtime/session',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ explainLanguage }),
+      },
+      CONNECT_TIMEOUT_MS,
+    );
     if (res.status === 429) throw new Error('daily_limit');
     if (!res.ok) throw new Error('session_failed');
     const data = (await res.json()) as { clientSecret: string; conversationId: string; model: string };
@@ -147,7 +191,7 @@ export function useRealtime() {
       const { clientSecret, conversationId, model } = session;
       conversationIdRef.current = conversationId;
 
-      const mic = await micPromise;
+      const mic = await micWithTimeout(micPromise, CONNECT_TIMEOUT_MS);
       micRef.current = mic;
 
       const pc = new RTCPeerConnection();
@@ -208,7 +252,7 @@ export function useRealtime() {
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      const sdpRes = await fetch(
+      const sdpRes = await fetchWithTimeout(
         `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}`,
         {
           method: 'POST',
@@ -218,6 +262,7 @@ export function useRealtime() {
           },
           body: offer.sdp,
         },
+        CONNECT_TIMEOUT_MS,
       );
       if (!sdpRes.ok) throw new Error(`sdp_failed_${sdpRes.status}`);
       const answer = await sdpRes.text();
@@ -238,11 +283,7 @@ export function useRealtime() {
       console.error('realtime start failed:', err);
       stop();
       setStatus('error');
-      setError(
-        err instanceof Error && err.message === 'daily_limit'
-          ? '今天的对话额度用完了,明天再来吧'
-          : '流畅模式连接失败,可以改用普通模式',
-      );
+      setError(voiceErrorMessage(err));
       return false;
     }
     },

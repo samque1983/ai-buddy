@@ -7,6 +7,7 @@ import { useConversation } from '@/components/talk/useConversation';
 import { useHandsFree } from '@/components/talk/useHandsFree';
 import { useRealtime } from '@/components/talk/useRealtime';
 import { useRecorder } from '@/components/talk/useRecorder';
+import { hasVoiceSupport, inAppBrowserLabel } from '@/lib/env/browser';
 import type { Expression } from '@/lib/types';
 
 const PHASE_LABEL: Record<string, string> = {
@@ -31,11 +32,22 @@ export default function TalkPage() {
   const [refOpen, setRefOpen] = useState(true);
   // Chosen before the session starts (see the 开始对话 controls); whole-session.
   const [chineseHelp, setChineseHelp] = useState(true);
+  // In-app browsers (WeChat/QQ/...) block getUserMedia + WebRTC, so voice can't
+  // work there at all — warn up front with a reopen-in-browser action instead of
+  // letting the user tap into a dead-end "连接失败". UA/capability checks need the
+  // client, so resolve after mount to avoid an SSR hydration mismatch.
+  const [voiceBlockedBy, setVoiceBlockedBy] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the pointer is still down across the async mic-permission gap.
   const pressedRef = useRef(false);
   const phaseRef = useRef(conv.phase);
   phaseRef.current = conv.phase;
+
+  useEffect(() => {
+    const label = inAppBrowserLabel();
+    if (label) setVoiceBlockedBy(label);
+    else if (!hasVoiceSupport()) setVoiceBlockedBy('当前浏览器');
+  }, []);
 
   const handsFree = useHandsFree((blob, mimeType) => {
     if (phaseRef.current === 'ready') void conv.sendAudio(blob, mimeType);
@@ -163,6 +175,16 @@ export default function TalkPage() {
           {subtitles ? '隐藏字幕' : '显示字幕'}
         </button>
       </header>
+
+      {voiceBlockedBy && (
+        <div className="mt-4 rounded-2xl border border-amber-400/50 bg-amber-50 px-4 py-3 text-sm dark:border-amber-400/30 dark:bg-amber-950/30">
+          <p className="font-medium">⚠️ {voiceBlockedBy}内不支持语音对话</p>
+          <p className="mt-1 opacity-80">
+            请点右上角 <span className="font-mono">⋯</span> 选择「在浏览器中打开」,用 Safari 或 Chrome
+            打开本页,就能正常语音了。
+          </p>
+        </div>
+      )}
 
       <div className="mt-4 flex items-center justify-center">
         <div
