@@ -122,6 +122,25 @@ describe('buildConversationSystem', () => {
     expect(englishOnly).not.toContain('KEY POINTS IN CHINESE');
   });
 
+  it('lesson mode drills the daily expressions', () => {
+    expect(system).toContain("Today's target expressions");
+    expect(system).not.toContain('FREE CHAT');
+  });
+
+  it('free-chat mode replaces the drill with conversation + naturalness upgrades', () => {
+    const freechat = buildConversationSystem({
+      character,
+      profile,
+      memories,
+      todaysExpressions: expressions,
+      mode: 'freechat',
+    });
+    expect(freechat).toContain('FREE CHAT');
+    expect(freechat).toContain('NATURALNESS UPGRADES');
+    expect(freechat).not.toContain("Today's target expressions"); // no drill
+    expect(freechat).toContain('Emma'); // persona still there
+  });
+
   it('omits the memory section when there are no memories', () => {
     const noMem = buildConversationSystem({
       character,

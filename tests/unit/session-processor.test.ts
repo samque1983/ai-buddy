@@ -21,6 +21,7 @@ const analysis = {
       improved: 'Yesterday I went shopping',
       explanation: '过去式用 went',
       category: 'grammar',
+      is_upgrade: false,
     },
   ],
   expression_usage: [

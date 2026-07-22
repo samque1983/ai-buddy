@@ -118,6 +118,14 @@ export interface Correction {
   improved: string;
   explanation: string;
   category: CorrectionCategory;
+  is_upgrade: boolean;
+}
+
+/** Which curriculum packs / mode the user is learning in. */
+export type SessionMode = 'lesson' | 'freechat';
+
+export function sessionModeFromPacks(packs: string[] | undefined): SessionMode {
+  return packs?.includes('freechat') ? 'freechat' : 'lesson';
 }
 
 export interface DailySession {

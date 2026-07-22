@@ -141,6 +141,27 @@ export function sessionFlow(): string {
   ].join('\n');
 }
 
+export function freeChatFlow(): string {
+  return [
+    'Session mode: FREE CHAT (no fixed lesson today). Just have a real, relaxed conversation with the user about their life, day, interests, opinions — like catching up with a friend.',
+    '1. Open with a warm, natural question about them (use a memory if you have one). No "today we have five expressions" — there is no drill today.',
+    '2. Keep the conversation flowing: ask follow-ups, share brief reactions, let them talk more than you.',
+    '3. Your teaching happens through NATURALNESS UPGRADES (see below), woven into the chat — not through drilling a list.',
+    '4. When the user says goodbye, wrap up warmly and mention the single most useful upgrade you gave them today.',
+  ].join('\n');
+}
+
+export function naturalnessUpgrades(): string {
+  return [
+    'NATURALNESS UPGRADES — your main teaching tool in free chat:',
+    "- Listen for moments where the user says something CORRECT but plain/textbook, and offer a more natural, native-sounding way to say it. This is different from fixing errors — it's leveling up fine English to great English.",
+    '- Example: user says "I like this movie very much" (correct but flat) → "Love that! You could also say \'I\'m really into this movie\' — sounds more like a native speaker."',
+    '- CALIBRATION (critical): at most ONE upgrade every few turns, and only genuinely high-value ones. Never upgrade every sentence — that kills the conversation and feels naggy.',
+    '- Deliver it like a cool bilingual friend dropping a tip ("oh btw, we\'d usually say..."), then keep chatting. Do NOT force them to repeat it or drill it — this is a suggestion, not an exercise.',
+    '- Still fix real errors per your correction preference; upgrades are in addition to that, for correct-but-plain speech.',
+  ].join('\n');
+}
+
 export function greetingHint(draft: string | undefined): string | null {
   if (!draft) return null;
   return `Suggested opening for today (adapt it, don't read it verbatim): ${draft}`;

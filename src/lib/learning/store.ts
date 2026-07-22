@@ -31,6 +31,7 @@ export interface NewCorrection {
   improved: string;
   explanation: string;
   category: Correction['category'];
+  is_upgrade: boolean;
 }
 
 export interface NewMemory {

@@ -16,6 +16,8 @@ export interface ConversationContext {
   tomorrowGreetingDraft?: string;
   /** How much Chinese to use when explaining. Defaults to 'bilingual'. */
   explainLanguage?: m.ExplainLanguage;
+  /** 'lesson' (curriculum drill) or 'freechat' (conversation + upgrades). */
+  mode?: 'lesson' | 'freechat';
 }
 
 /**
@@ -27,14 +29,15 @@ export function buildConversationSystem(ctx: ConversationContext): string {
     m.globalRules(),
     m.safetyRules(),
     m.characterPersona(ctx.character),
-    m.sessionFlow(),
+    // Free chat replaces the lesson drill with conversation + naturalness upgrades.
+    ...(ctx.mode === 'freechat'
+      ? [m.freeChatFlow(), m.naturalnessUpgrades()]
+      : [m.sessionFlow(), m.reviewExpressions(ctx.reviewExpressions), m.dailyExpressions(ctx.todaysExpressions)]),
     m.correctionStyle(ctx.profile.correction_preference),
     m.explanationLanguage(ctx.explainLanguage ?? 'bilingual'),
     m.userProfile(ctx.profile),
     m.progressSnapshot(ctx.masteredCount, ctx.practicingCount),
     m.memories(ctx.memories),
-    m.reviewExpressions(ctx.reviewExpressions),
-    m.dailyExpressions(ctx.todaysExpressions),
     m.greetingHint(ctx.tomorrowGreetingDraft),
   ];
   return sections.filter((s): s is string => s !== null).join('\n\n');

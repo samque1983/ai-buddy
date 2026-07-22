@@ -36,9 +36,14 @@ export const postSessionSchema = z.object({
         improved: z.string(),
         explanation: z.string().describe('Short explanation; Chinese is fine'),
         category: z.enum(['grammar', 'word-choice', 'chinglish', 'pronunciation-note']),
+        is_upgrade: z
+          .boolean()
+          .describe(
+            'True if this is a naturalness UPGRADE (the user said something correct but plain and you offered a more native version), false if it fixes an actual error.',
+          ),
       }),
     )
-    .describe('The 0-5 most valuable corrections from this session'),
+    .describe('The most valuable corrections AND naturalness upgrades from this session (0-8 total)'),
   expression_usage: z
     .array(
       z.object({

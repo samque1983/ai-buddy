@@ -84,19 +84,40 @@ export default function SummaryPage({
             )}
           </section>
 
-          {data!.corrections.length > 0 && (
+          {data!.corrections.filter((c) => !c.is_upgrade).length > 0 && (
             <section className="mt-6">
               <h2 className="text-xs font-semibold uppercase tracking-widest opacity-50">
                 今日重点纠错
               </h2>
               <div className="mt-3 space-y-3">
-                {data!.corrections.map((c) => (
-                  <div key={c.id} className="rounded-2xl border border-black/10 p-4 dark:border-white/15">
-                    <p className="text-sm line-through opacity-50">{c.original}</p>
-                    <p className="mt-1 font-medium">{c.improved}</p>
-                    <p className="mt-1 text-sm opacity-70">{c.explanation}</p>
-                  </div>
-                ))}
+                {data!.corrections
+                  .filter((c) => !c.is_upgrade)
+                  .map((c) => (
+                    <div key={c.id} className="rounded-2xl border border-black/10 p-4 dark:border-white/15">
+                      <p className="text-sm line-through opacity-50">{c.original}</p>
+                      <p className="mt-1 font-medium">{c.improved}</p>
+                      <p className="mt-1 text-sm opacity-70">{c.explanation}</p>
+                    </div>
+                  ))}
+              </div>
+            </section>
+          )}
+
+          {data!.corrections.filter((c) => c.is_upgrade).length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-xs font-semibold uppercase tracking-widest opacity-50">
+                💡 更地道的说法
+              </h2>
+              <div className="mt-3 space-y-3">
+                {data!.corrections
+                  .filter((c) => c.is_upgrade)
+                  .map((c) => (
+                    <div key={c.id} className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                      <p className="text-sm opacity-60">{c.original}</p>
+                      <p className="mt-1 font-medium">↑ {c.improved}</p>
+                      {c.explanation && <p className="mt-1 text-sm opacity-70">{c.explanation}</p>}
+                    </div>
+                  ))}
               </div>
             </section>
           )}

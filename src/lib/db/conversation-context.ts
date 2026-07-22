@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { Character, Expression, Profile, UserMemory } from '@/lib/types';
+import type { Character, Expression, Profile, SessionMode, UserMemory } from '@/lib/types';
+import { sessionModeFromPacks } from '@/lib/types';
 import type { ChatMessage } from '@/lib/services/types';
 import { todayInTimezone } from '@/lib/streak';
 
@@ -19,6 +20,7 @@ export interface ConversationContext {
   practicingCount: number;
   tomorrowGreetingDraft?: string;
   explainLanguage?: 'bilingual' | 'english';
+  mode?: SessionMode;
 }
 
 /** Loads everything the prompt builder needs for the current user. */
@@ -109,6 +111,7 @@ export async function loadConversationContext(
     masteredCount,
     practicingCount,
     tomorrowGreetingDraft: lastConv?.[0]?.tomorrow_greeting ?? undefined,
+    mode: sessionModeFromPacks(profile.active_packs),
   };
 }
 

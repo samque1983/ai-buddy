@@ -1,5 +1,6 @@
 import type { LlmService } from '@/lib/services/types';
 import type { EnglishLevel, Expression, Profile } from '@/lib/types';
+import { sessionModeFromPacks } from '@/lib/types';
 import { dailyExpressionsSchema } from './schemas';
 import { selectFromCurriculum, type CurriculumItem } from './curriculum-select';
 import type { LearningStore, NewExpression } from './store';
@@ -33,6 +34,10 @@ export class ExpressionService {
   async getOrGenerateDaily(userId: string, date: string): Promise<Expression[]> {
     const existing = await this.store.getExpressionsByDate(userId, date);
     if (existing.length > 0) return existing;
+
+    // Free-chat mode has no curriculum — learning happens through organic upgrades.
+    const profileEarly = await this.store.getProfile(userId);
+    if (sessionModeFromPacks(profileEarly?.active_packs) === 'freechat') return [];
 
     const session = await this.store.ensureDailySession(userId, date);
 

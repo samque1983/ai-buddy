@@ -13,6 +13,7 @@ const ANALYSIS_SYSTEM = [
   'You analyze a finished English practice conversation between a Chinese learner (user) and their AI companion (assistant).',
   'Extract: a warm summary, the most valuable corrections of the USER\'s English, which target expressions the user actually practiced, new long-term memories, and a greeting draft for tomorrow.',
   'Corrections must come from actual user utterances. Never invent mistakes.',
+  'Also capture NATURALNESS UPGRADES: places where the user said something correct but plain and a more native version was (or could have been) offered. Record these in the same corrections array with is_upgrade=true (original = what they said, improved = the more natural version). Error fixes get is_upgrade=false.',
   'Memories must be facts worth knowing weeks later (their life, preferences, recurring issues) — not small talk. Do not duplicate existing memories.',
 ].join('\n');
 
