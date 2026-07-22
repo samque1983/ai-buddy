@@ -7,6 +7,7 @@ import { useConversation } from '@/components/talk/useConversation';
 import { useHandsFree } from '@/components/talk/useHandsFree';
 import { useRealtime } from '@/components/talk/useRealtime';
 import { useRecorder } from '@/components/talk/useRecorder';
+import type { Expression } from '@/lib/types';
 
 const PHASE_LABEL: Record<string, string> = {
   idle: '点击开始',
@@ -26,6 +27,8 @@ export default function TalkPage() {
   const [subtitles, setSubtitles] = useState(true);
   const [hint, setHint] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
+  const [expressions, setExpressions] = useState<Expression[]>([]);
+  const [refOpen, setRefOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the pointer is still down across the async mic-permission gap.
   const pressedRef = useRef(false);
@@ -43,6 +46,17 @@ export default function TalkPage() {
     if (!handsFree.enabled) return;
     handsFree.setListening(conv.phase === 'ready');
   }, [conv.phase, handsFree]);
+
+  // Today's target expressions, shown as a reference strip so the user can
+  // see the Chinese meaning of each word while the character teaches it.
+  useEffect(() => {
+    fetch('/api/expressions/daily')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { expressions: Expression[] } | null) => {
+        if (d?.expressions) setExpressions(d.expressions);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -144,6 +158,28 @@ export default function TalkPage() {
           🗣️
         </div>
       </div>
+
+      {expressions.length > 0 && (
+        <div className="mt-3 rounded-2xl border border-black/10 dark:border-white/15">
+          <button
+            onClick={() => setRefOpen((o) => !o)}
+            className="flex w-full items-center justify-between px-4 py-2 text-xs font-semibold uppercase tracking-widest opacity-60"
+          >
+            📖 今日要学
+            <span>{refOpen ? '收起' : '展开'}</span>
+          </button>
+          {refOpen && (
+            <ul className="border-t border-black/10 px-4 py-2 dark:border-white/15">
+              {expressions.map((e) => (
+                <li key={e.id} className="flex items-baseline justify-between gap-3 py-1 text-sm">
+                  <span className="font-medium">{e.english}</span>
+                  <span className="shrink-0 opacity-60">{e.chinese}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div ref={scrollRef} className="mt-4 flex-1 space-y-3 overflow-y-auto">
         {subtitles &&
