@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getServices } from '@/lib/services/factory';
-import { buildConversationSystem } from '@/lib/prompts/builder';
+import { buildRealtimeInstructions } from '@/lib/realtime/instructions';
 import { chargeTurnAttempt } from '@/lib/api/rate-limit';
 import { ExpressionService } from '@/lib/learning/expression-service';
 import { SupabaseLearningStore } from '@/lib/learning/supabase-store';
@@ -13,14 +13,6 @@ import {
 } from '@/lib/db/conversation-context';
 
 export const maxDuration = 60;
-
-const REALTIME_INSTRUCTIONS_SUFFIX = [
-  '',
-  'Realtime voice notes:',
-  '- This is live speech: the user can interrupt you at any time — stop and listen when they do.',
-  '- Speak at a relaxed, natural pace. Keep every reply short (one or two sentences) unless teaching an expression.',
-  '- Never output markdown, lists, or stage directions; everything you say is spoken aloud.',
-].join('\n');
 
 /**
  * Mints an ephemeral OpenAI Realtime client secret configured with the
@@ -65,7 +57,7 @@ export async function POST(request: Request) {
 
   const dailySessionId = await ensureDailySession(supabase, user.id, ctx.profile.timezone);
   const model = process.env.REALTIME_MODEL ?? 'gpt-realtime-mini';
-  const instructions = buildConversationSystem(ctx) + REALTIME_INSTRUCTIONS_SUFFIX;
+  const instructions = buildRealtimeInstructions(ctx);
 
   // The slow hop is minting the client secret (OpenAI, US). Run it in parallel
   // with the conversation insert (Supabase) instead of one after the other.

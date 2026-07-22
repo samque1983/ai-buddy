@@ -43,6 +43,16 @@ interface AuthDeps {
   makeClient?: (cookies: RawCookie[]) => UpgradeAuthClient;
 }
 
+/** Builds a Supabase server client from a raw upgrade Cookie header (read-only). */
+export function createRelaySupabase(cookieHeader: string | undefined) {
+  const cookies = parseCookieHeader(cookieHeader);
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookies, setAll: () => {} } },
+  );
+}
+
 function defaultClient(cookies: RawCookie[]): UpgradeAuthClient {
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
