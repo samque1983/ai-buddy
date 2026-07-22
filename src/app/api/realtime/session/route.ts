@@ -41,12 +41,10 @@ export async function POST(request: Request) {
   if (!ctx) return NextResponse.json({ error: 'setup_incomplete' }, { status: 400 });
   ctx = { ...ctx, explainLanguage };
 
-  // A realtime session is many turns — charge a bundle up front.
-  for (let i = 0; i < 5; i++) {
-    const budget = await chargeTurnAttempt(supabase, todayInTimezone(ctx.profile.timezone));
-    if (budget === 'limited') {
-      return NextResponse.json({ error: 'daily_limit_reached' }, { status: 429 });
-    }
+  // One charge per realtime session start (single round-trip, not five).
+  const budget = await chargeTurnAttempt(supabase, todayInTimezone(ctx.profile.timezone));
+  if (budget === 'limited') {
+    return NextResponse.json({ error: 'daily_limit_reached' }, { status: 429 });
   }
 
   if (ctx.todaysExpressions.length === 0) {
@@ -66,53 +64,57 @@ export async function POST(request: Request) {
   }
 
   const dailySessionId = await ensureDailySession(supabase, user.id, ctx.profile.timezone);
-  const { data: conversation, error } = await supabase
-    .from('conversations')
-    .insert({
-      user_id: user.id,
-      character_id: ctx.character.id,
-      daily_session_id: dailySessionId,
-    })
-    .select('id')
-    .single<{ id: string }>();
-  if (error || !conversation) {
-    return NextResponse.json({ error: 'create_failed' }, { status: 500 });
-  }
-
   const model = process.env.REALTIME_MODEL ?? 'gpt-realtime-mini';
   const instructions = buildConversationSystem(ctx) + REALTIME_INSTRUCTIONS_SUFFIX;
 
-  const res = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      expires_after: { anchor: 'created_at', seconds: 600 },
-      session: {
-        type: 'realtime',
-        model,
-        instructions,
-        audio: {
-          input: {
-            transcription: { model: 'gpt-4o-mini-transcribe' },
-            turn_detection: { type: 'semantic_vad' },
-          },
-          output: { voice: toRealtimeVoice(ctx.character.tts_voice) },
-        },
+  // The slow hop is minting the client secret (OpenAI, US). Run it in parallel
+  // with the conversation insert (Supabase) instead of one after the other.
+  const [mintRes, conversationRes] = await Promise.all([
+    fetch('https://api.openai.com/v1/realtime/client_secrets', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({
+        expires_after: { anchor: 'created_at', seconds: 600 },
+        session: {
+          type: 'realtime',
+          model,
+          instructions,
+          audio: {
+            input: {
+              transcription: { model: 'gpt-4o-mini-transcribe' },
+              turn_detection: { type: 'semantic_vad' },
+            },
+            output: { voice: toRealtimeVoice(ctx.character.tts_voice) },
+          },
+        },
+      }),
     }),
-  });
-  if (!res.ok) {
-    console.error('realtime client secret failed:', res.status, await res.text());
+    supabase
+      .from('conversations')
+      .insert({
+        user_id: user.id,
+        character_id: ctx.character.id,
+        daily_session_id: dailySessionId,
+      })
+      .select('id')
+      .single<{ id: string }>(),
+  ]);
+
+  if (conversationRes.error || !conversationRes.data) {
+    return NextResponse.json({ error: 'create_failed' }, { status: 500 });
+  }
+  if (!mintRes.ok) {
+    console.error('realtime client secret failed:', mintRes.status, await mintRes.text());
     return NextResponse.json({ error: 'realtime_unavailable' }, { status: 502 });
   }
-  const data = (await res.json()) as { value: string };
+  const data = (await mintRes.json()) as { value: string };
 
   return NextResponse.json({
     clientSecret: data.value,
-    conversationId: conversation.id,
+    conversationId: conversationRes.data.id,
     model,
   });
 }

@@ -47,13 +47,22 @@ export function useRealtime() {
     setStatus('connecting');
     setError(null);
     try {
+      // The session mint (server, ~2-3s) and the mic grant are independent —
+      // run them together so the mic is ready the moment the secret arrives.
+      const micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
       const sessionRes = await fetch('/api/realtime/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ explainLanguage: opts?.explainLanguage ?? 'bilingual' }),
       });
-      if (sessionRes.status === 429) throw new Error('daily_limit');
-      if (!sessionRes.ok) throw new Error('session_failed');
+      if (sessionRes.status === 429) {
+        micPromise.then((m) => m.getTracks().forEach((t) => t.stop())).catch(() => {});
+        throw new Error('daily_limit');
+      }
+      if (!sessionRes.ok) {
+        micPromise.then((m) => m.getTracks().forEach((t) => t.stop())).catch(() => {});
+        throw new Error('session_failed');
+      }
       const { clientSecret, conversationId, model } = (await sessionRes.json()) as {
         clientSecret: string;
         conversationId: string;
@@ -61,7 +70,7 @@ export function useRealtime() {
       };
       conversationIdRef.current = conversationId;
 
-      const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mic = await micPromise;
       micRef.current = mic;
 
       const pc = new RTCPeerConnection();
