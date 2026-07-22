@@ -17,7 +17,7 @@ export const dailyExpressionsSchema = z.object({
         reason: z.string().describe('Why this expression was chosen for this user today'),
       }),
     )
-    .min(5)
+    .min(1)
     .max(5),
 });
 export type DailyExpressionsOutput = z.infer<typeof dailyExpressionsSchema>;

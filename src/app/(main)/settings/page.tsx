@@ -65,6 +65,47 @@ export default function SettingsPage() {
 
       <section className="mt-6 space-y-6">
         <div>
+          <div className="mb-2 font-medium">学习内容</div>
+          <div className="space-y-2">
+            {(
+              [
+                ['daily-core', '日常地道表达', '最常用的日常口语,高频优先'],
+                ['ielts', '雅思', 'IELTS 口语/写作提分表达与搭配'],
+              ] as [string, string, string][]
+            ).map(([pack, label, desc]) => {
+              const active = profile.active_packs?.includes(pack) ?? false;
+              return (
+                <button
+                  key={pack}
+                  onClick={() => {
+                    const current = profile.active_packs ?? ['daily-core'];
+                    const next = active
+                      ? current.filter((p) => p !== pack)
+                      : [...current, pack];
+                    // Never leave the user with no pack.
+                    save({ active_packs: next.length > 0 ? next : ['daily-core'] });
+                  }}
+                  className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                    active
+                      ? 'border-foreground bg-foreground text-background'
+                      : 'border-black/15 dark:border-white/20'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{label}</span>
+                    <span className="text-sm">{active ? '✓ 学习中' : '未启用'}</span>
+                  </div>
+                  <div className="mt-0.5 text-sm opacity-70">{desc}</div>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-xs opacity-50">
+            可多选。改动会在下一天的新表达中生效。
+          </p>
+        </div>
+
+        <div>
           <div className="mb-2 font-medium">纠错偏好</div>
           <div className="flex gap-2">
             {(

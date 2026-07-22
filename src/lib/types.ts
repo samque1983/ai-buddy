@@ -36,6 +36,7 @@ export interface Profile {
   speech_speed: number;
   subtitles_enabled: boolean;
   selected_character_id: string | null;
+  active_packs: string[];
   timezone: string;
   streak_current: number;
   streak_longest: number;

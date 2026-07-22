@@ -2,6 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { ExpressionService } from '@/lib/learning/expression-service';
 import { FakeLlm } from '../fakes';
 import { InMemoryLearningStore, makeProfile } from '../fakes/learning-store';
+import type { CurriculumItem } from '@/lib/learning/curriculum-select';
+
+function curr(pack: string, rank: number, english: string, level = 'elementary'): CurriculumItem {
+  return {
+    id: `${pack}-${rank}`,
+    pack,
+    rank,
+    level: level as CurriculumItem['level'],
+    english,
+    chinese: `${english} 中文`,
+    scenario: 's',
+    formality: 'casual',
+    example_sentence: `${english} example.`,
+    common_mistake: 'm',
+  };
+}
 
 const structured = {
   expressions: Array.from({ length: 5 }, (_, i) => ({
@@ -64,6 +80,63 @@ describe('ExpressionService.getOrGenerateDaily', () => {
     const goodService = new ExpressionService(new FakeLlm('unused', structured), store, 1);
     const rows = await goodService.getOrGenerateDaily('u1', '2026-07-20');
     expect(rows).toHaveLength(5);
+  });
+
+  it('draws from the curriculum (rank order) without calling the LLM', async () => {
+    const { store, llm, service } = setup();
+    store.curriculum = [
+      curr('daily-core', 3, 'C'),
+      curr('daily-core', 1, 'A'),
+      curr('daily-core', 2, 'B'),
+      curr('daily-core', 4, 'D'),
+      curr('daily-core', 5, 'E'),
+      curr('daily-core', 6, 'F'),
+    ];
+    const rows = await service.getOrGenerateDaily('u1', '2026-07-20');
+    expect(rows.map((e) => e.english)).toEqual(['A', 'B', 'C', 'D', 'E']);
+    expect(llm.extractCalls).toHaveLength(0);
+    expect(rows.every((e) => (e.source as { pack?: string }).pack === 'daily-core')).toBe(true);
+  });
+
+  it('skips curriculum items the user has already learned', async () => {
+    const { store, service } = setup();
+    store.curriculum = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((s, i) => curr('daily-core', i + 1, s));
+    // Pretend the user already learned A and C on a previous day.
+    await store.insertExpressions('u1', 'prev', '2026-07-19', [
+      { english: 'A', chinese: '', scenario: '', formality: 'casual', example_sentence: '', common_mistake: '', source: null },
+      { english: 'C', chinese: '', scenario: '', formality: 'casual', example_sentence: '', common_mistake: '', source: null },
+    ]);
+    const rows = await service.getOrGenerateDaily('u1', '2026-07-20');
+    expect(rows.map((e) => e.english)).toEqual(['B', 'D', 'E', 'F', 'G']);
+  });
+
+  it('gates out items harder than the user level + 1 tier', async () => {
+    const { store, service } = setup(); // profile is intermediate (tier 3), so max tier 4 = advanced ok
+    store.profiles.set('u1', makeProfile({ english_level: 'beginner' })); // tier 1, max tier 2
+    store.curriculum = [
+      curr('daily-core', 1, 'easy1', 'beginner'),
+      curr('daily-core', 2, 'hard', 'advanced'),
+      curr('daily-core', 3, 'easy2', 'elementary'),
+    ];
+    const rows = await service.getOrGenerateDaily('u1', '2026-07-20');
+    const englishes = rows.map((e) => e.english);
+    expect(englishes.slice(0, 2)).toEqual(['easy1', 'easy2']); // curriculum, common first
+    expect(englishes).not.toContain('hard'); // too hard — gated out
+    expect(rows).toHaveLength(5); // LLM fallback tops up the remaining 3
+  });
+
+  it('round-robins across two active packs', async () => {
+    const { store, service } = setup();
+    store.profiles.set('u1', makeProfile({ active_packs: ['daily-core', 'ielts'] }));
+    store.curriculum = [
+      curr('daily-core', 1, 'D1'),
+      curr('daily-core', 2, 'D2'),
+      curr('daily-core', 3, 'D3'),
+      curr('ielts', 1, 'I1', 'intermediate'),
+      curr('ielts', 2, 'I2', 'intermediate'),
+    ];
+    const rows = await service.getOrGenerateDaily('u1', '2026-07-20');
+    expect(rows.map((e) => e.english)).toEqual(['D1', 'I1', 'D2', 'I2', 'D3']);
   });
 
   it('feeds recent corrections and level into the generation input', async () => {

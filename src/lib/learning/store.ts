@@ -8,6 +8,7 @@ import type {
   Profile,
   UserMemory,
 } from '@/lib/types';
+import type { CurriculumItem } from './curriculum-select';
 
 export interface TranscriptRow {
   role: 'user' | 'assistant';
@@ -83,6 +84,10 @@ export interface LearningStore {
     patch: Partial<ExpressionProgress>,
   ): Promise<void>;
   getDueReviews(userId: string, date: string): Promise<Expression[]>;
+  /** All expressions a pack contains, ordered by rank ascending. */
+  getCurriculum(pack: string): Promise<CurriculumItem[]>;
+  /** Lowercased english of every expression the user has already been taught. */
+  getLearnedEnglish(userId: string): Promise<Set<string>>;
 
   // corrections / memories — save* calls OVERWRITE prior rows for the
   // conversation so re-running finalization never duplicates them.

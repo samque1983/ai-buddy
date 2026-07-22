@@ -16,6 +16,7 @@ import type {
   NewMemory,
   TranscriptRow,
 } from '@/lib/learning/store';
+import type { CurriculumItem } from '@/lib/learning/curriculum-select';
 
 let idCounter = 0;
 const nextId = () => `id-${++idCounter}`;
@@ -31,6 +32,7 @@ export function makeProfile(overrides: Partial<Profile> = {}): Profile {
     speech_speed: 1.0,
     subtitles_enabled: true,
     selected_character_id: 'c1',
+    active_packs: ['daily-core'],
     timezone: 'Asia/Shanghai',
     streak_current: 0,
     streak_longest: 0,
@@ -167,6 +169,15 @@ export class InMemoryLearningStore implements LearningStore {
       (p) => p.user_id === userId && p.next_review_at !== null && p.next_review_at <= date && p.status !== 'mastered',
     );
     return this.expressions.filter((e) => due.some((p) => p.expression_id === e.id));
+  }
+  curriculum: CurriculumItem[] = [];
+  async getCurriculum(pack: string) {
+    return this.curriculum.filter((c) => c.pack === pack).sort((a, b) => a.rank - b.rank);
+  }
+  async getLearnedEnglish(userId: string) {
+    return new Set(
+      this.expressions.filter((e) => e.user_id === userId).map((e) => e.english.toLowerCase().trim()),
+    );
   }
   async getRecentCorrections(userId: string, limit: number) {
     return this.corrections.filter((c) => c.user_id === userId).slice(-limit);

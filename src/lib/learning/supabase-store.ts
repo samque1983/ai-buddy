@@ -17,6 +17,7 @@ import type {
   NewMemory,
   TranscriptRow,
 } from './store';
+import type { CurriculumItem } from './curriculum-select';
 
 export class SupabaseLearningStore implements LearningStore {
   constructor(private db: SupabaseClient) {}
@@ -216,6 +217,25 @@ export class SupabaseLearningStore implements LearningStore {
       )
       .returns<Expression[]>();
     return data ?? [];
+  }
+
+  async getCurriculum(pack: string): Promise<CurriculumItem[]> {
+    const { data } = await this.db
+      .from('curriculum_expressions')
+      .select('*')
+      .eq('pack', pack)
+      .order('rank', { ascending: true })
+      .returns<CurriculumItem[]>();
+    return data ?? [];
+  }
+
+  async getLearnedEnglish(userId: string): Promise<Set<string>> {
+    const { data } = await this.db
+      .from('expressions')
+      .select('english')
+      .eq('user_id', userId)
+      .returns<{ english: string }[]>();
+    return new Set((data ?? []).map((e) => e.english.toLowerCase().trim()));
   }
 
   async getRecentCorrections(userId: string, limit: number): Promise<Correction[]> {
