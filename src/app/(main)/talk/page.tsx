@@ -43,6 +43,19 @@ export default function TalkPage() {
   const rt = useRealtime();
   const inRealtime = rt.status !== 'off';
 
+  // Prewarm the realtime session while the user is on the idle screen deciding,
+  // so tapping 流畅模式 feels near-instant. Re-prewarm when the 中文讲解 choice
+  // changes; the hook discards a stale/unused prewarm on unmount.
+  useEffect(() => {
+    if (conv.phase === 'idle' && rt.status === 'off') {
+      rt.prewarm(chineseHelp ? 'bilingual' : 'english');
+    }
+    // Pipeline mode chosen instead — release the unused prewarmed session.
+    if (conv.phase !== 'idle' && rt.status === 'off') {
+      rt.discardPrewarm();
+    }
+  }, [conv.phase, rt.status, rt.prewarm, rt.discardPrewarm, chineseHelp]);
+
   // In hands-free mode, listen only when it's the user's turn.
   useEffect(() => {
     if (!handsFree.enabled) return;

@@ -1,9 +1,22 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import type { TranscriptEntry } from './useConversation';
 
 export type RealtimeStatus = 'off' | 'connecting' | 'live' | 'error';
+type ExplainLanguage = 'bilingual' | 'english';
+
+interface MintedSession {
+  clientSecret: string;
+  conversationId: string;
+  model: string;
+  explainLanguage: ExplainLanguage;
+  at: number;
+}
+
+// Ephemeral secrets live 10 min; refuse to reuse a prewarm older than this.
+const PREWARM_MAX_AGE_MS = 8 * 60 * 1000;
 
 /**
  * 流畅模式: browser ↔ OpenAI Realtime over WebRTC. The server only mints an
@@ -19,6 +32,11 @@ export function useRealtime() {
   const micRef = useRef<MediaStream | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const conversationIdRef = useRef<string | null>(null);
+  const prewarmRef = useRef<MintedSession | null>(null);
+  const prewarmInFlight = useRef<Promise<MintedSession | null> | null>(null);
+  // The explainLanguage we've already attempted to prewarm, so a failed mint
+  // isn't retried on every render (start() mints fresh on tap as a fallback).
+  const prewarmAttemptedLang = useRef<ExplainLanguage | null>(null);
 
   const persist = useCallback((role: 'user' | 'assistant', content: string) => {
     const conversationId = conversationIdRef.current;
@@ -42,32 +60,91 @@ export function useRealtime() {
     setStatus('off');
   }, []);
 
+  /** Mints a session on the server (~2-3s). No WebRTC yet. */
+  const mint = useCallback(async (explainLanguage: ExplainLanguage): Promise<MintedSession> => {
+    const res = await fetch('/api/realtime/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ explainLanguage }),
+    });
+    if (res.status === 429) throw new Error('daily_limit');
+    if (!res.ok) throw new Error('session_failed');
+    const data = (await res.json()) as { clientSecret: string; conversationId: string; model: string };
+    return { ...data, explainLanguage, at: Date.now() };
+  }, []);
+
+  /** Deletes an unused prewarmed conversation so it doesn't linger or skew stats. */
+  const dropConversation = useCallback((conversationId: string) => {
+    createClient().from('conversations').delete().eq('id', conversationId).then(
+      () => {},
+      () => {},
+    );
+  }, []);
+
+  /**
+   * Prewarm: mint the session in the background while the user is deciding, so
+   * tapping 流畅模式 skips the ~2.7s server work and only pays the WebRTC handshake.
+   */
+  const prewarm = useCallback(
+    (explainLanguage: ExplainLanguage = 'bilingual') => {
+      // Already attempted this language (succeeded, in-flight, or failed) — don't retry.
+      if (prewarmAttemptedLang.current === explainLanguage) return;
+
+      const existing = prewarmRef.current;
+      if (existing && existing.explainLanguage !== explainLanguage) {
+        prewarmRef.current = null;
+        dropConversation(existing.conversationId); // language changed — discard the old one
+      }
+      prewarmAttemptedLang.current = explainLanguage;
+      prewarmInFlight.current = mint(explainLanguage)
+        .then((session) => {
+          prewarmRef.current = session;
+          return session;
+        })
+        .catch(() => null)
+        .finally(() => {
+          prewarmInFlight.current = null;
+        });
+    },
+    [mint, dropConversation],
+  );
+
+  /** Discard any unused prewarmed session (on leaving, or switching to pipeline mode). */
+  const discardPrewarm = useCallback(() => {
+    const p = prewarmRef.current;
+    prewarmRef.current = null;
+    prewarmAttemptedLang.current = null;
+    if (p) dropConversation(p.conversationId);
+  }, [dropConversation]);
+
   const start = useCallback(
     async (opts?: { explainLanguage?: 'bilingual' | 'english' }): Promise<boolean> => {
+    const explainLanguage = opts?.explainLanguage ?? 'bilingual';
     setStatus('connecting');
     setError(null);
     try {
-      // The session mint (server, ~2-3s) and the mic grant are independent —
-      // run them together so the mic is ready the moment the secret arrives.
       const micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
-      const sessionRes = await fetch('/api/realtime/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ explainLanguage: opts?.explainLanguage ?? 'bilingual' }),
-      });
-      if (sessionRes.status === 429) {
-        micPromise.then((m) => m.getTracks().forEach((t) => t.stop())).catch(() => {});
-        throw new Error('daily_limit');
+
+      // Use a matching, fresh prewarm if we have one; otherwise mint now
+      // (awaiting an in-flight prewarm first so we don't double-charge).
+      let session = prewarmRef.current;
+      prewarmRef.current = null;
+      prewarmAttemptedLang.current = null;
+      if (
+        !session ||
+        session.explainLanguage !== explainLanguage ||
+        Date.now() - session.at >= PREWARM_MAX_AGE_MS
+      ) {
+        if (session) dropConversation(session.conversationId);
+        const pending = prewarmInFlight.current ? await prewarmInFlight.current : null;
+        if (pending && pending.explainLanguage === explainLanguage) {
+          session = pending;
+        } else {
+          if (pending) dropConversation(pending.conversationId);
+          session = await mint(explainLanguage);
+        }
       }
-      if (!sessionRes.ok) {
-        micPromise.then((m) => m.getTracks().forEach((t) => t.stop())).catch(() => {});
-        throw new Error('session_failed');
-      }
-      const { clientSecret, conversationId, model } = (await sessionRes.json()) as {
-        clientSecret: string;
-        conversationId: string;
-        model: string;
-      };
+      const { clientSecret, conversationId, model } = session;
       conversationIdRef.current = conversationId;
 
       const mic = await micPromise;
@@ -169,7 +246,7 @@ export function useRealtime() {
       return false;
     }
     },
-    [persist, stop],
+    [persist, stop, mint, dropConversation],
   );
 
   /** Ends the session: closes the connection and finalizes the conversation. */
@@ -184,7 +261,21 @@ export function useRealtime() {
     return conversationId;
   }, [stop]);
 
-  useEffect(() => () => stop(), [stop]);
+  // On unmount, tear down the connection and drop any unused prewarm.
+  useEffect(
+    () => () => {
+      stop();
+      const p = prewarmRef.current;
+      prewarmRef.current = null;
+      if (p) {
+        createClient().from('conversations').delete().eq('id', p.conversationId).then(
+          () => {},
+          () => {},
+        );
+      }
+    },
+    [stop],
+  );
 
-  return { status, speaking, transcript, error, start, end };
+  return { status, speaking, transcript, error, start, end, prewarm, discardPrewarm };
 }
