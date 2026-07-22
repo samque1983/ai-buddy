@@ -4,6 +4,11 @@ import { reviewTransition } from './review-transition';
 import { postSessionSchema } from './schemas';
 import type { LearningStore } from './store';
 
+function clampScore(score: number): number {
+  if (!Number.isFinite(score)) return 0;
+  return Math.max(0, Math.min(10, Math.round(score)));
+}
+
 const ANALYSIS_SYSTEM = [
   'You analyze a finished English practice conversation between a Chinese learner (user) and their AI companion (assistant).',
   'Extract: a warm summary, the most valuable corrections of the USER\'s English, which target expressions the user actually practiced, new long-term memories, and a greeting draft for tomorrow.',
@@ -70,10 +75,15 @@ export class SessionProcessor {
         return;
       }
 
-      const [expressions, existingMemories] = await Promise.all([
+      const [todays, reviews, existingMemories] = await Promise.all([
         this.store.getExpressionsWithProgress(conversation.user_id, sessionDate),
+        this.store.getDueReviewsWithProgress(conversation.user_id, sessionDate),
         this.store.getMemories(conversation.user_id),
       ]);
+      // Today's new set plus any due-review expressions that resurfaced —
+      // both can be practiced and scored this session. Dedupe by expression id.
+      const seen = new Set(todays.map((e) => e.expression.id));
+      const expressions = [...todays, ...reviews.filter((e) => !seen.has(e.expression.id))];
 
       const analysis = await this.llm.extractStructured({
         system: ANALYSIS_SYSTEM,
@@ -97,24 +107,28 @@ export class SessionProcessor {
       );
       await this.store.saveSummary(conversationId, analysis.summary, analysis.tomorrow_greeting);
 
-      // Apply spaced-repetition transitions for expressions that came up.
+      // Apply score-driven spaced-repetition transitions for expressions that came up.
       const usageByEnglish = new Map(
-        analysis.expression_usage.map((u) => [u.english.toLowerCase().trim(), u.practiced]),
+        analysis.expression_usage.map((u) => [
+          u.english.toLowerCase().trim(),
+          { practiced: u.practiced, score: clampScore(u.score) },
+        ]),
       );
       for (const { expression, progress } of expressions) {
-        const practiced = usageByEnglish.get(expression.english.toLowerCase().trim());
-        if (practiced === undefined) continue; // never came up — leave as-is
+        const usage = usageByEnglish.get(expression.english.toLowerCase().trim());
+        if (usage === undefined) continue; // never came up — leave as-is
         const next = reviewTransition(
           { status: progress.status, review_stage: progress.review_stage },
-          practiced,
+          { practiced: usage.practiced, score: usage.practiced ? usage.score : null },
           sessionDate,
         );
         await this.store.updateExpressionProgress(progress.id, {
           status: next.status,
           review_stage: next.review_stage,
           next_review_at: next.next_review_at,
-          times_practiced: progress.times_practiced + (practiced ? 1 : 0),
-          last_practiced_at: practiced ? new Date().toISOString() : undefined,
+          last_score: next.last_score,
+          times_practiced: progress.times_practiced + (usage.practiced ? 1 : 0),
+          last_practiced_at: usage.practiced ? new Date().toISOString() : undefined,
         });
       }
 

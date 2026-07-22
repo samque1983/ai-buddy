@@ -1,7 +1,13 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import type { Correction, Profile } from '@/lib/types';
+import type { Correction, ExpressionStatus, Profile } from '@/lib/types';
+
+interface ReviewRow {
+  expression_id: string;
+  status: ExpressionStatus;
+  last_score: number | null;
+}
 
 export default async function StatsPage() {
   const supabase = await createClient();
@@ -10,7 +16,7 @@ export default async function StatsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const [{ data: profile }, { count: learned }, { count: mastered }, { data: corrections }] =
+  const [{ data: profile }, { count: learned }, { data: progress }, { data: corrections }] =
     await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single<Profile>(),
       supabase
@@ -19,9 +25,9 @@ export default async function StatsPage() {
         .eq('user_id', user.id),
       supabase
         .from('expression_progress')
-        .select('id', { count: 'exact', head: true })
+        .select('expression_id, status, last_score')
         .eq('user_id', user.id)
-        .eq('status', 'mastered'),
+        .returns<ReviewRow[]>(),
       supabase
         .from('corrections')
         .select('*')
@@ -30,6 +36,29 @@ export default async function StatsPage() {
         .limit(5)
         .returns<Correction[]>(),
     ]);
+
+  const rows = progress ?? [];
+  const mastered = rows.filter((p) => p.status === 'mastered').length;
+  const needsReview = rows.filter((p) => p.status === 'needs_review');
+
+  // Fetch the English text for the to-review expressions.
+  let reviewList: { id: string; english: string; last_score: number | null }[] = [];
+  if (needsReview.length > 0) {
+    const { data: exprs } = await supabase
+      .from('expressions')
+      .select('id, english')
+      .in(
+        'id',
+        needsReview.map((p) => p.expression_id),
+      )
+      .returns<{ id: string; english: string }[]>();
+    const scoreById = new Map(needsReview.map((p) => [p.expression_id, p.last_score]));
+    reviewList = (exprs ?? []).map((e) => ({
+      id: e.id,
+      english: e.english,
+      last_score: scoreById.get(e.id) ?? null,
+    }));
+  }
 
   const minutes = Math.round((profile?.total_talk_seconds ?? 0) / 60);
 
@@ -61,6 +90,27 @@ export default async function StatsPage() {
           </div>
         ))}
       </div>
+
+      {reviewList.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-xs font-semibold uppercase tracking-widest opacity-50">
+            🔴 待复习(下次对话搭子会主动带你练)
+          </h2>
+          <div className="mt-3 space-y-2">
+            {reviewList.map((e) => (
+              <div
+                key={e.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-black/10 px-4 py-3 dark:border-white/15"
+              >
+                <span className="font-medium">{e.english}</span>
+                {e.last_score !== null && (
+                  <span className="shrink-0 text-sm opacity-60">{e.last_score}/10</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {(corrections?.length ?? 0) > 0 && (
         <section className="mt-8">

@@ -24,8 +24,8 @@ const analysis = {
     },
   ],
   expression_usage: [
-    { english: 'Expression 1', practiced: true },
-    { english: 'Expression 2', practiced: false },
+    { english: 'Expression 1', practiced: true, score: 8 },
+    { english: 'Expression 2', practiced: false, score: 0 },
   ],
   memories: [
     { type: 'event', content: 'User went shopping with their girlfriend yesterday.', importance: 3 },
@@ -115,12 +115,27 @@ describe('SessionProcessor.finalize', () => {
     expect(practiced.status).toBe('practicing');
     expect(practiced.review_stage).toBe(1);
     expect(practiced.times_practiced).toBe(1);
+    expect(practiced.last_score).toBe(8);
 
     const surfacedOnly = byEnglish('Expression 2');
     expect(surfacedOnly.status).toBe('seen');
 
     // Expression 3 never came up — untouched
     expect(byEnglish('Expression 3').status).toBe('new');
+  });
+
+  it('a weak score marks the expression needs_review instead of advancing', async () => {
+    const { store, processor, llm } = await setup();
+    llm.setStructured({
+      ...analysis,
+      expression_usage: [{ english: 'Expression 1', practiced: true, score: 4 }],
+    });
+    await processor.finalize('conv1');
+    const e = store.expressions.find((x) => x.english === 'Expression 1')!;
+    const p = store.progress.find((pr) => pr.expression_id === e.id)!;
+    expect(p.status).toBe('needs_review');
+    expect(p.review_stage).toBe(0);
+    expect(p.last_score).toBe(4);
   });
 
   it('is a no-op for already-finalized conversations', async () => {

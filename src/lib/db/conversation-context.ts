@@ -5,11 +5,18 @@ import { todayInTimezone } from '@/lib/streak';
 
 const HISTORY_LIMIT = 30;
 
+export interface ReviewExpression extends Expression {
+  last_score: number | null;
+}
+
 export interface ConversationContext {
   profile: Profile;
   character: Character;
   memories: UserMemory[];
   todaysExpressions: Expression[];
+  reviewExpressions: ReviewExpression[];
+  masteredCount: number;
+  practicingCount: number;
   tomorrowGreetingDraft?: string;
 }
 
@@ -59,11 +66,47 @@ export async function loadConversationContext(
       .returns<{ tomorrow_greeting: string | null }[]>(),
   ]);
 
+  // Due-for-review expressions from earlier days (the actual weak ones to re-drill),
+  // plus overall mastery counts so the character can give the user a progress read.
+  const { data: progress } = await supabase
+    .from('expression_progress')
+    .select('expression_id, status, last_score, next_review_at')
+    .eq('user_id', userId)
+    .returns<
+      { expression_id: string; status: string; last_score: number | null; next_review_at: string | null }[]
+    >();
+
+  const masteredCount = (progress ?? []).filter((p) => p.status === 'mastered').length;
+  const practicingCount = (progress ?? []).filter(
+    (p) => p.status === 'practicing' || p.status === 'needs_review' || p.status === 'seen',
+  ).length;
+
+  const todaysIds = new Set((expressions ?? []).map((e) => e.id));
+  const dueIds = (progress ?? [])
+    .filter((p) => p.status !== 'mastered' && p.next_review_at !== null && p.next_review_at <= today)
+    .map((p) => p.expression_id)
+    .filter((id) => !todaysIds.has(id))
+    .slice(0, 3);
+
+  let reviewExpressions: ReviewExpression[] = [];
+  if (dueIds.length > 0) {
+    const { data: rows } = await supabase
+      .from('expressions')
+      .select('*')
+      .in('id', dueIds)
+      .returns<Expression[]>();
+    const scoreById = new Map((progress ?? []).map((p) => [p.expression_id, p.last_score]));
+    reviewExpressions = (rows ?? []).map((e) => ({ ...e, last_score: scoreById.get(e.id) ?? null }));
+  }
+
   return {
     profile,
     character,
     memories: memories ?? [],
     todaysExpressions: expressions ?? [],
+    reviewExpressions,
+    masteredCount,
+    practicingCount,
     tomorrowGreetingDraft: lastConv?.[0]?.tomorrow_greeting ?? undefined,
   };
 }

@@ -146,6 +146,29 @@ export class SupabaseLearningStore implements LearningStore {
     });
   }
 
+  async getDueReviewsWithProgress(userId: string, date: string): Promise<ExpressionWithProgress[]> {
+    const { data: due } = await this.db
+      .from('expression_progress')
+      .select('*')
+      .eq('user_id', userId)
+      .lte('next_review_at', date)
+      .neq('status', 'mastered')
+      .returns<ExpressionProgress[]>();
+    if (!due || due.length === 0) return [];
+    const { data: expressions } = await this.db
+      .from('expressions')
+      .select('*')
+      .in(
+        'id',
+        due.map((p) => p.expression_id),
+      )
+      .returns<Expression[]>();
+    return (expressions ?? []).flatMap((expression) => {
+      const progress = due.find((p) => p.expression_id === expression.id);
+      return progress ? [{ expression, progress }] : [];
+    });
+  }
+
   async insertExpressions(
     userId: string,
     dailySessionId: string,

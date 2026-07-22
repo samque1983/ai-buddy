@@ -70,6 +70,8 @@ export interface LearningStore {
   // expressions
   getExpressionsByDate(userId: string, date: string): Promise<Expression[]>;
   getExpressionsWithProgress(userId: string, date: string): Promise<ExpressionWithProgress[]>;
+  /** Due-for-review expressions (from earlier days) with their progress rows. */
+  getDueReviewsWithProgress(userId: string, date: string): Promise<ExpressionWithProgress[]>;
   insertExpressions(
     userId: string,
     dailySessionId: string,

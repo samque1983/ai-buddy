@@ -96,6 +96,7 @@ export interface ExpressionProgress {
   last_practiced_at: string | null;
   review_stage: number;
   next_review_at: string | null;
+  last_score: number | null;
 }
 
 export interface UserMemory {

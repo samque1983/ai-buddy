@@ -42,11 +42,16 @@ export const postSessionSchema = z.object({
   expression_usage: z
     .array(
       z.object({
-        english: z.string().describe('Must exactly match one of the target expressions'),
+        english: z.string().describe('Must exactly match one of the target/review expressions'),
         practiced: z.boolean().describe('True if the USER actually attempted/used it'),
+        score: z
+          .number()
+          .describe(
+            'Quality of the user\'s best attempt, 0-10 (pronunciation + correct usage). 0 if they did not attempt it.',
+          ),
       }),
     )
-    .describe('Usage status for each target expression that came up'),
+    .describe('Usage status and score for each target/review expression that came up'),
   memories: z
     .array(
       z.object({

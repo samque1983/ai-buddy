@@ -1,4 +1,5 @@
 import type { Character, CorrectionPreference, Expression, Profile, UserMemory } from '@/lib/types';
+import type { ReviewExpression } from './builder';
 
 /**
  * Modular prompt fragments. Each module returns a string section or null (omitted).
@@ -70,6 +71,29 @@ export function dailyExpressions(items: Expression[]): string | null {
   ].join('\n');
 }
 
+export function progressSnapshot(
+  mastered: number | undefined,
+  practicing: number | undefined,
+): string | null {
+  if (mastered === undefined && practicing === undefined) return null;
+  return [
+    "The user's overall progress (mention it naturally once, e.g. at the start or in the recap, so they feel their growth — do not recite it robotically):",
+    `- Mastered so far: ${mastered ?? 0}`,
+    `- Still building: ${practicing ?? 0}`,
+  ].join('\n');
+}
+
+export function reviewExpressions(items: ReviewExpression[] | undefined): string | null {
+  if (!items || items.length === 0) return null;
+  return [
+    'REVIEW FIRST — these are expressions from earlier days the user has NOT nailed yet (low or no score). Open the session by re-drilling these BEFORE any new expression: remind them of it, have them try it once or twice, score it, and move on. This is the user\'s spaced review — lead it, don\'t skip it.',
+    ...items.map(
+      (e) =>
+        `- "${e.english}" — ${e.chinese}${e.last_score !== null ? ` (last score ${e.last_score}/10)` : ''}. Example: ${e.example_sentence}`,
+    ),
+  ].join('\n');
+}
+
 export function correctionStyle(pref: CorrectionPreference): string {
   const styles: Record<CorrectionPreference, string> = {
     light: [
@@ -91,12 +115,13 @@ export function correctionStyle(pref: CorrectionPreference): string {
 export function sessionFlow(): string {
   return [
     "Session flow (~8-12 minutes). The session is a LESSON disguised as a chat: today's five expressions are the spine, small talk is only the glue.",
-    "1. Your VERY FIRST message must, in ~3 short sentences: greet with one personal touch (use a memory), announce today's mini-lesson (\"I've got five expressions for you today\"), and teach expression #1 with a quick \"say it after me\". Do NOT open with small-talk questions.",
+    "1. Your VERY FIRST message: greet with one personal touch (use a memory), then get to work. If there are REVIEW FIRST expressions, open by re-drilling the first of those (\"before new stuff, let's nail one from before\"); otherwise announce today's five and teach expression #1. Either way, end the first message with \"say it after me\". Do NOT open with small-talk questions.",
     '2. For each expression: use it in a sentence about their life, explain it in five seconds, then lead the practice ("Say it after me: ...").',
     '3. HARD RULE — never loop on one expression. The user practices an expression AT MOST TWO TIMES, then you MUST move on, even if it is not perfect. On the final attempt give a quick verbal score out of 10 plus the ONE thing to fix (e.g. "Solid, 7 out of 10 — just stress the first syllable. We\'ll come back to it. Next one:"). Then immediately start the next expression. Do not ask them to repeat a third time.',
     '4. Keep a running mental note of which expressions scored low. Do NOT re-drill them mid-lesson — save them for the recap.',
     '5. After all five, do a RECAP (~1 min): say which ones they nailed and which need work, then re-drill ONLY the one or two lowest-scoring expressions, ONE extra try each, with a final tip.',
-    '6. When the user says goodbye, wrap up in 1-2 sentences: their best expression today plus the one to review next time.',
+    '6. If the user asks to just review, or to slow down, or to do more of one thing, follow their lead — they steer the plan by voice, you run it.',
+    '7. When the user says goodbye, wrap up in 1-2 sentences: their best expression today plus the one to review next time.',
   ].join('\n');
 }
 

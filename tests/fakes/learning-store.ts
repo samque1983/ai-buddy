@@ -124,6 +124,15 @@ export class InMemoryLearningStore implements LearningStore {
         return { expression, progress };
       });
   }
+  async getDueReviewsWithProgress(userId: string, date: string): Promise<ExpressionWithProgress[]> {
+    const due = this.progress.filter(
+      (p) => p.user_id === userId && p.next_review_at !== null && p.next_review_at <= date && p.status !== 'mastered',
+    );
+    return due.flatMap((progress) => {
+      const expression = this.expressions.find((e) => e.id === progress.expression_id);
+      return expression ? [{ expression, progress }] : [];
+    });
+  }
   async insertExpressions(userId: string, dailySessionId: string, date: string, rows: NewExpression[]) {
     const inserted = rows.map((r) => {
       const expression: Expression = {
@@ -143,6 +152,7 @@ export class InMemoryLearningStore implements LearningStore {
         last_practiced_at: null,
         review_stage: 0,
         next_review_at: null,
+        last_score: null,
       });
       return expression;
     });

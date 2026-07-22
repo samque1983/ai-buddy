@@ -1,11 +1,18 @@
 import type { Character, Expression, Profile, UserMemory } from '@/lib/types';
 import * as m from './modules';
 
+export interface ReviewExpression extends Expression {
+  last_score: number | null;
+}
+
 export interface ConversationContext {
   character: Character;
   profile: Profile;
   memories: UserMemory[];
   todaysExpressions: Expression[];
+  reviewExpressions?: ReviewExpression[];
+  masteredCount?: number;
+  practicingCount?: number;
   tomorrowGreetingDraft?: string;
 }
 
@@ -21,7 +28,9 @@ export function buildConversationSystem(ctx: ConversationContext): string {
     m.sessionFlow(),
     m.correctionStyle(ctx.profile.correction_preference),
     m.userProfile(ctx.profile),
+    m.progressSnapshot(ctx.masteredCount, ctx.practicingCount),
     m.memories(ctx.memories),
+    m.reviewExpressions(ctx.reviewExpressions),
     m.dailyExpressions(ctx.todaysExpressions),
     m.greetingHint(ctx.tomorrowGreetingDraft),
   ];

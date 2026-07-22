@@ -34,6 +34,10 @@ export class FakeLlm implements LlmService {
     }
   }
 
+  setStructured(structured: unknown) {
+    this.structured = structured;
+  }
+
   async extractStructured<T>(params: {
     schema: z.ZodType<T>;
     schemaName: string;
