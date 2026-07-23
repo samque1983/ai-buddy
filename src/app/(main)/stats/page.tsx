@@ -1,12 +1,22 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import type { LearningSummaryContent } from '@/lib/learning/schemas';
 import type { Correction, ExpressionStatus, Profile } from '@/lib/types';
 
 interface ReviewRow {
   expression_id: string;
   status: ExpressionStatus;
   last_score: number | null;
+}
+
+function Bilingual({ point }: { point: { zh: string; en: string } }) {
+  return (
+    <div>
+      <p className="text-sm leading-relaxed">{point.zh}</p>
+      <p className="mt-0.5 text-xs leading-relaxed opacity-60">{point.en}</p>
+    </div>
+  );
 }
 
 export default async function StatsPage() {
@@ -16,7 +26,7 @@ export default async function StatsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  const [{ data: profile }, { count: learned }, { data: progress }, { data: corrections }] =
+  const [{ data: profile }, { count: learned }, { data: progress }, { data: corrections }, summaryRes] =
     await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).single<Profile>(),
       supabase
@@ -35,7 +45,18 @@ export default async function StatsPage() {
         .order('created_at', { ascending: false })
         .limit(5)
         .returns<Correction[]>(),
+      // Graceful when the table doesn't exist yet (code can deploy before db push).
+      supabase
+        .from('learning_summaries')
+        .select('content, updated_at')
+        .eq('user_id', user.id)
+        .maybeSingle<{ content: LearningSummaryContent; updated_at: string }>()
+        .then(
+          (r) => r,
+          () => ({ data: null }),
+        ),
     ]);
+  const summary = summaryRes?.data?.content ?? null;
 
   const rows = progress ?? [];
   const mastered = rows.filter((p) => p.status === 'mastered').length;
@@ -78,6 +99,36 @@ export default async function StatsPage() {
           返回
         </Link>
       </header>
+
+      {summary && (
+        <section className="mt-6 rounded-2xl border border-black/10 p-5 dark:border-white/15">
+          <h2 className="text-xs font-semibold uppercase tracking-widest opacity-50">学习总结</h2>
+          <div className="mt-3">
+            <Bilingual point={summary.overall} />
+          </div>
+          {summary.strengths.length > 0 && (
+            <div className="mt-4">
+              <div className="text-xs font-semibold opacity-60">✅ 进步点 · Wins</div>
+              <div className="mt-2 space-y-2.5">
+                {summary.strengths.map((p, i) => (
+                  <Bilingual key={i} point={p} />
+                ))}
+              </div>
+            </div>
+          )}
+          {summary.improvements.length > 0 && (
+            <div className="mt-4">
+              <div className="text-xs font-semibold opacity-60">🎯 待改进 · Focus next</div>
+              <div className="mt-2 space-y-2.5">
+                {summary.improvements.map((p, i) => (
+                  <Bilingual key={i} point={p} />
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="mt-4 text-xs opacity-40">每次对话后自动更新</p>
+        </section>
+      )}
 
       <div className="mt-6 grid grid-cols-2 gap-3">
         {stats.map((s) => (

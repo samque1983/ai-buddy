@@ -91,6 +91,27 @@ describe('SessionProcessor.finalize', () => {
     expect(store.conversations.get('conv1')!.summary?.encouragement).toBe('今天说得很棒!');
   });
 
+  it('refreshes the whole-journey learning summary after finalizing', async () => {
+    const { store, llm, processor } = await setup();
+    llm.setStructuredFor('learning_summary', {
+      overall: { zh: '进展不错', en: 'Coming along nicely' },
+      strengths: [{ zh: '开口更自然', en: 'Speaking more naturally' }],
+      improvements: [{ zh: '注意时态', en: 'Watch your tenses' }],
+    });
+    await processor.finalize('conv1');
+    expect(store.learningSummaries.get('u1')?.overall.en).toContain('nicely');
+  });
+
+  it('a summary-refresh failure never fails the finalized pipeline', async () => {
+    const { store, llm, processor } = await setup();
+    // No learning_summary payload registered → the default analysis payload fails
+    // the learningSummarySchema parse → refresh throws internally.
+    llm.setStructuredFor('learning_summary', { totally: 'wrong' });
+    await processor.finalize('conv1');
+    expect(store.conversations.get('conv1')!.status).toBe('finalized');
+    expect(store.learningSummaries.get('u1')).toBeUndefined();
+  });
+
   it('updates streak and talk time on the profile and daily session', async () => {
     const { store, processor } = await setup();
     await processor.finalize('conv1');
