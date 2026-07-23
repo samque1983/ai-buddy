@@ -25,13 +25,16 @@ export async function GET() {
     return NextResponse.json({ error: 'setup_incomplete' }, { status: 400 });
   }
 
-  const service = new ExpressionService(getServices().llm, new SupabaseLearningStore(supabase));
+  const store = new SupabaseLearningStore(supabase);
+  const service = new ExpressionService(getServices().llm, store);
   try {
-    const expressions = await service.getOrGenerateDaily(
-      user.id,
-      todayInTimezone(profile.timezone),
-    );
-    return NextResponse.json({ expressions });
+    const date = todayInTimezone(profile.timezone);
+    const [expressions, reviews] = await Promise.all([
+      service.getOrGenerateDaily(user.id, date),
+      // Due spaced-review words — surfaced everywhere today's words are shown.
+      store.getDueReviews(user.id, date),
+    ]);
+    return NextResponse.json({ expressions, reviews });
   } catch (err) {
     console.error('daily expressions failed', err);
     return NextResponse.json({ error: 'generation_failed' }, { status: 500 });

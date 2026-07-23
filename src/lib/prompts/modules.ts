@@ -94,6 +94,21 @@ export function reviewExpressions(items: ReviewExpression[] | undefined): string
   ].join('\n');
 }
 
+/**
+ * Free-chat version of spaced review: the due words still resurface (the memory
+ * curve must not break in chat mode), but woven into conversation, never drilled.
+ */
+export function freechatReviewWeave(items: ReviewExpression[] | undefined): string | null {
+  if (!items || items.length === 0) return null;
+  return [
+    "Spaced review (chat mode): these earlier expressions are due for review today. Do NOT drill them — instead, naturally weave each one into the conversation when a fitting moment comes up: use it yourself, or steer a topic where the user would need it, and nudge them to try it once ('oh, this is a perfect spot for ...'). One at a time, spread across the chat.",
+    ...items.map(
+      (e) =>
+        `- "${e.english}" — ${e.chinese}${e.last_score !== null ? ` (last score ${e.last_score}/10)` : ''}`,
+    ),
+  ].join('\n');
+}
+
 export type ExplainLanguage = 'bilingual' | 'english';
 
 export function explanationLanguage(mode: ExplainLanguage): string {

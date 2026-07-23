@@ -39,6 +39,8 @@ export default function TalkPage() {
     if (!cached) return [];
     return readCachedExpressions(cached.id, normalizeActivePacks(cached.active_packs)) ?? [];
   });
+  // Due spaced-review words (server-scheduled) — shown in the strip with a 🔁 marker.
+  const [reviews, setReviews] = useState<Expression[]>([]);
   const [refOpen, setRefOpen] = useState(true);
   // Chosen before the session starts (see the 开始对话 controls); whole-session.
   const [chineseHelp, setChineseHelp] = useState(true);
@@ -89,13 +91,14 @@ export default function TalkPage() {
     handsFree.setListening(conv.phase === 'ready');
   }, [conv.phase, handsFree]);
 
-  // Today's target expressions, shown as a reference strip so the user can
-  // see the Chinese meaning of each word while the character teaches it.
+  // Today's target expressions + due review words, shown as a reference strip so
+  // the user can see the Chinese meaning while the character teaches/reviews them.
   useEffect(() => {
     fetch('/api/expressions/daily')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { expressions: Expression[] } | null) => {
+      .then((d: { expressions: Expression[]; reviews?: Expression[] } | null) => {
         if (d?.expressions) setExpressions(d.expressions);
+        if (d?.reviews) setReviews(d.reviews);
       })
       .catch(() => {});
   }, []);
@@ -214,17 +217,23 @@ export default function TalkPage() {
         </div>
       </div>
 
-      {expressions.length > 0 && (
+      {(expressions.length > 0 || reviews.length > 0) && (
         <div className="mt-3 rounded-2xl border border-black/10 dark:border-white/15">
           <button
             onClick={() => setRefOpen((o) => !o)}
             className="flex w-full items-center justify-between px-4 py-2 text-xs font-semibold uppercase tracking-widest opacity-60"
           >
-            📖 今日要学
+            📖 今日要学{reviews.length > 0 ? ` · 🔁 复习 ${reviews.length}` : ''}
             <span>{refOpen ? '收起' : '展开'}</span>
           </button>
           {refOpen && (
             <ul className="max-h-40 divide-y divide-black/5 overflow-y-auto border-t border-black/10 px-4 dark:divide-white/5 dark:border-white/15">
+              {reviews.map((e) => (
+                <li key={e.id} className="py-2 text-sm">
+                  <div className="font-medium leading-snug break-words">🔁 {e.english}</div>
+                  <div className="mt-0.5 leading-snug opacity-60 break-words">{e.chinese}</div>
+                </li>
+              ))}
               {expressions.map((e) => (
                 <li key={e.id} className="py-2 text-sm">
                   <div className="font-medium leading-snug break-words">{e.english}</div>

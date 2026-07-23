@@ -61,7 +61,10 @@ export async function prepareRelayContext(
   const voice = toRealtimeVoice(ctx.character.tts_voice);
   // Prime the transcription model with today's target phrases so the learner's
   // subtitle is accurate for exactly the words they practice.
-  const transcriptionPrompt = buildTranscriptionPrompt(ctx.todaysExpressions);
+  const transcriptionPrompt = buildTranscriptionPrompt([
+    ...ctx.todaysExpressions,
+    ...(ctx.reviewExpressions ?? []),
+  ]);
 
   const { data, error } = await supabase
     .from('conversations')
