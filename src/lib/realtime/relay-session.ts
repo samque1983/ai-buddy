@@ -8,6 +8,8 @@
 export interface RelayTransport {
   send(data: string | ArrayBufferView | ArrayBuffer): void;
   close(code?: number, reason?: string): void;
+  /** Bytes queued but not yet flushed (ws.bufferedAmount) — for backpressure. */
+  readonly bufferedAmount?: number;
 }
 
 export interface RelaySession {

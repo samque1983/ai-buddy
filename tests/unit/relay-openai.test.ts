@@ -4,6 +4,7 @@ import {
   classifyServerEvent,
   encodeAudioAppend,
   createOpenAIRelaySession,
+  BACKPRESSURE_BYTES,
 } from '@/lib/realtime/relay-openai';
 
 describe('buildSessionUpdate', () => {
@@ -85,27 +86,72 @@ describe('classifyServerEvent', () => {
 });
 
 describe('createOpenAIRelaySession', () => {
-  function harness() {
+  function harness(bufferedAmount = 0) {
     const toClient: unknown[] = [];
     const toUpstream: string[] = [];
     const persisted: { role: string; content: string }[] = [];
-    let upstreamClosed = false;
+    let upstreamCloses = 0;
+    let clientCloses = 0;
     const s = createOpenAIRelaySession({
-      client: { send: (d) => toClient.push(d), close: () => {} },
-      upstream: { send: (d) => toUpstream.push(d), close: () => { upstreamClosed = true; } },
+      client: {
+        send: (d) => toClient.push(d),
+        close: () => {
+          clientCloses++;
+        },
+        bufferedAmount,
+      },
+      upstream: {
+        send: (d) => toUpstream.push(d),
+        close: () => {
+          upstreamCloses++;
+        },
+      },
       instructions: 'You are Emma.',
       voice: 'marin',
       persist: (role, content) => persisted.push({ role, content }),
     });
-    return { s, toClient, toUpstream, persisted, get upstreamClosed() { return upstreamClosed; } };
+    return {
+      s,
+      toClient,
+      toUpstream,
+      persisted,
+      get upstreamCloses() {
+        return upstreamCloses;
+      },
+      get clientCloses() {
+        return clientCloses;
+      },
+    };
   }
 
-  it('sends session.update to OpenAI when the upstream opens', () => {
+  it('sends session.update then response.create when the upstream opens (assistant greets first)', () => {
     const h = harness();
     h.s.onUpstreamOpen();
-    const evt = JSON.parse(h.toUpstream[0]);
-    expect(evt.type).toBe('session.update');
-    expect(evt.session.instructions).toBe('You are Emma.');
+    expect(JSON.parse(h.toUpstream[0]).type).toBe('session.update');
+    expect(JSON.parse(h.toUpstream[0]).session.instructions).toBe('You are Emma.');
+    expect(JSON.parse(h.toUpstream[1]).type).toBe('response.create');
+  });
+
+  it('drops audio deltas under client backpressure but still forwards transcripts', () => {
+    const h = harness(BACKPRESSURE_BYTES + 1); // client is backed up
+    h.s.onUpstreamMessage(JSON.stringify({ type: 'response.output_audio.delta', delta: 'zzz' }));
+    h.s.onUpstreamMessage(
+      JSON.stringify({ type: 'conversation.item.input_audio_transcription.completed', transcript: 'hi' }),
+    );
+    // audio dropped, transcript still forwarded (1), and persisted
+    expect(h.toClient.length).toBe(1);
+    expect(h.persisted).toEqual([{ role: 'user', content: 'hi' }]);
+  });
+
+  it('teardown is idempotent — double close fires the opposite side once', () => {
+    const h = harness();
+    h.s.onClose();
+    h.s.onClose();
+    expect(h.upstreamCloses).toBe(1);
+    const h2 = harness();
+    h2.s.onUpstreamClose();
+    h2.s.onUpstreamClose();
+    expect(h2.clientCloses).toBe(1);
   });
 
   it('relays client audio (binary) up as an audio append', () => {
@@ -129,7 +175,7 @@ describe('createOpenAIRelaySession', () => {
   it('tears down the upstream when the client disconnects', () => {
     const h = harness();
     h.s.onClose();
-    expect(h.upstreamClosed).toBe(true);
+    expect(h.upstreamCloses).toBe(1);
   });
 
   it('closes the client when the upstream drops', () => {

@@ -97,6 +97,13 @@ export interface OpenAIRelaySession extends RelaySession {
   onUpstreamClose(): void;
 }
 
+// Drop audio deltas once the client's send buffer passes this — a slow client
+// (the target: bad China networks) drains slower than OpenAI fills, so without
+// this the Node heap grows unbounded per session → OOM on the 512MB box.
+export const BACKPRESSURE_BYTES = 1_000_000; // 1 MB
+
+const AUDIO_DELTA_TYPES = new Set(['response.output_audio.delta', 'response.audio.delta']);
+
 export function createOpenAIRelaySession(deps: {
   client: RelayTransport;
   upstream: Upstream;
@@ -105,10 +112,17 @@ export function createOpenAIRelaySession(deps: {
   persist: (role: 'user' | 'assistant', content: string) => void;
 }): OpenAIRelaySession {
   const { client, upstream, instructions, voice, persist } = deps;
+  // One guarded teardown so close events (which cross-trigger each other) can't
+  // re-enter or leak the opposite socket.
+  let closed = false;
+
   return {
     // --- OpenAI (upstream) side ---
     onUpstreamOpen() {
       upstream.send(JSON.stringify(buildSessionUpdate(instructions, voice)));
+      // Kick off the assistant's greeting (sessionFlow: it speaks first). Server
+      // VAD drives every turn after this.
+      upstream.send(JSON.stringify({ type: 'response.create' }));
     },
     onUpstreamMessage(raw) {
       let evt: ServerEvent;
@@ -118,10 +132,18 @@ export function createOpenAIRelaySession(deps: {
         return; // non-JSON frame — ignore
       }
       const { forwardToClient, persist: p } = classifyServerEvent(evt);
-      if (forwardToClient) client.send(raw);
+      if (forwardToClient) {
+        const isAudio = AUDIO_DELTA_TYPES.has(evt.type);
+        const backedUp = (client.bufferedAmount ?? 0) > BACKPRESSURE_BYTES;
+        // Under backpressure, drop audio (recoverable) but never the small
+        // transcript/state events.
+        if (!(isAudio && backedUp)) client.send(raw);
+      }
       if (p) persist(p.role, p.content);
     },
     onUpstreamClose() {
+      if (closed) return;
+      closed = true;
       client.close(1011, 'realtime upstream closed');
     },
     // --- client side ---
@@ -134,6 +156,8 @@ export function createOpenAIRelaySession(deps: {
       }
     },
     onClose() {
+      if (closed) return;
+      closed = true;
       upstream.close();
     },
   };

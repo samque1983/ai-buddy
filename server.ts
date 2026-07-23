@@ -21,6 +21,13 @@ import { appendMessage } from './src/lib/db/conversation-context';
 
 const RELAY_PATH = '/api/realtime/ws';
 const OPENAI_REALTIME_URL = 'wss://api.openai.com/v1/realtime';
+// Cap concurrent relayed sessions on the 512MB box (each holds 2 sockets + audio
+// buffers + an OpenAI stream). Fly's proxy won't cap this for us.
+const MAX_SESSIONS = 20;
+// Hard ceiling on a single session: bounds a revoked/expired JWT still streaming
+// (we only auth at upgrade) and reaps dead connections that never close.
+const MAX_SESSION_MS = 15 * 60 * 1000;
+let activeSessions = 0;
 
 async function main() {
   const dev = process.env.NODE_ENV !== 'production';
@@ -51,36 +58,96 @@ async function main() {
   });
 
   async function handleRelayUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
-    // Reject unauthenticated upgrades BEFORE accepting the socket or opening OpenAI.
+    // Reject unauthenticated / over-capacity upgrades BEFORE accepting the socket
+    // or opening any OpenAI connection.
     const supabase = createRelaySupabase(req.headers.cookie);
     const {
       data: { user },
     } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
     if (!user) {
-      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    if (activeSessions >= MAX_SESSIONS) {
+      socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }
     const url = new URL(req.url ?? '', 'http://localhost');
     const explainLanguage = url.searchParams.get('lang') === 'english' ? 'english' : 'bilingual';
 
-    wss.handleUpgrade(req, socket, head, async (clientWs) => {
-      const ctx = await prepareRelayContext(supabase, user.id, explainLanguage);
+    wss.handleUpgrade(req, socket, head, (clientWs) => {
+      void runSession(clientWs, supabase, user.id, explainLanguage);
+    });
+  }
+
+  async function runSession(
+    clientWs: WebSocket,
+    supabase: ReturnType<typeof createRelaySupabase>,
+    userId: string,
+    explainLanguage: 'bilingual' | 'english',
+  ) {
+    activeSessions++;
+    let upstream: WebSocket | null = null;
+    let torn = false;
+    // Single guarded teardown: closes both sockets, clears the timer, decrements
+    // the counter exactly once no matter which edge fires.
+    const teardown = () => {
+      if (torn) return;
+      torn = true;
+      clearTimeout(maxTimer);
+      try {
+        upstream?.close();
+      } catch {
+        /* already closing */
+      }
+      try {
+        clientWs.close();
+      } catch {
+        /* already closing */
+      }
+      activeSessions--;
+    };
+    // Wire client teardown IMMEDIATELY, before any await, so a disconnect during
+    // async prep tears down (and decrements) instead of leaking.
+    clientWs.on('close', teardown);
+    clientWs.on('error', teardown);
+    const maxTimer = setTimeout(() => {
+      try {
+        clientWs.close(4003, 'session_time_limit');
+      } catch {
+        /* ignore */
+      }
+      teardown();
+    }, MAX_SESSION_MS);
+
+    try {
+      const ctx = await prepareRelayContext(supabase, userId, explainLanguage);
+      if (torn) return; // client vanished during prep
       if (!ctx.ok) {
-        // 4000-range close code → client maps to an actionable message.
-        clientWs.close(4001, ctx.error);
+        clientWs.close(4001, ctx.error); // 4000-range → client maps to a message
+        teardown();
         return;
       }
-      // Tell the client its conversationId (needed to finalize the session later).
+      if (clientWs.readyState !== clientWs.OPEN) {
+        teardown();
+        return;
+      }
       clientWs.send(JSON.stringify({ type: 'relay.ready', conversationId: ctx.conversationId }));
 
-      const upstream = new WebSocket(
-        `${OPENAI_REALTIME_URL}?model=${encodeURIComponent(ctx.model)}`,
-        { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'OpenAI-Beta': 'realtime=v1' } },
-      );
+      upstream = new WebSocket(`${OPENAI_REALTIME_URL}?model=${encodeURIComponent(ctx.model)}`, {
+        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      });
       const session = createOpenAIRelaySession({
-        client: { send: (d) => clientWs.send(d), close: (code, reason) => clientWs.close(code, reason) },
-        upstream: { send: (d) => upstream.send(d), close: () => upstream.close() },
+        client: {
+          send: (d) => clientWs.send(d),
+          close: (code, reason) => clientWs.close(code, reason),
+          get bufferedAmount() {
+            return clientWs.bufferedAmount;
+          },
+        },
+        upstream: { send: (d) => upstream?.send(d), close: () => upstream?.close() },
         instructions: ctx.instructions,
         voice: ctx.voice,
         persist: (role, content) => {
@@ -90,14 +157,21 @@ async function main() {
 
       upstream.on('open', () => session.onUpstreamOpen());
       upstream.on('message', (data) => session.onUpstreamMessage(data.toString()));
-      upstream.on('close', () => session.onUpstreamClose());
-      upstream.on('error', () => session.onUpstreamClose());
+      upstream.on('close', () => {
+        session.onUpstreamClose();
+        teardown();
+      });
+      upstream.on('error', () => {
+        session.onUpstreamClose();
+        teardown();
+      });
       clientWs.on('message', (data, isBinary) =>
         session.onMessage(isBinary ? (data as Buffer) : data.toString(), isBinary),
       );
-      clientWs.on('close', () => session.onClose());
-      clientWs.on('error', () => session.onClose());
-    });
+    } catch (err) {
+      console.error('relay session setup failed:', err);
+      teardown();
+    }
   }
 
   server.listen(port, hostname, () => {

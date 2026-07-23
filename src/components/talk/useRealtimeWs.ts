@@ -80,8 +80,10 @@ export function useRealtimeWs() {
         wsRef.current = ws;
 
         // Capture: mic → worklet → downsample + PCM16 → ws. Worklet is NOT connected
-        // to destination (that would loop the mic back to the speakers).
-        const captureCtx = new AudioContext();
+        // to destination (that would loop the mic back to the speakers). Pin 48k so
+        // the downsample to 24k is a clean 2:1 (downsample() still reads the actual
+        // rate, so a browser that ignores the hint stays correct).
+        const captureCtx = new AudioContext({ sampleRate: 48000 });
         captureCtxRef.current = captureCtx;
         await captureCtx.audioWorklet.addModule('/worklets/pcm-capture.js');
         const source = captureCtx.createMediaStreamSource(mic);
