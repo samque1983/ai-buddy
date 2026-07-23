@@ -1,3 +1,4 @@
+import { isPhantomTranscript } from './transcript-filter';
 import type { RelaySession, RelayTransport } from './relay-session';
 
 /**
@@ -55,11 +56,12 @@ export function buildSessionUpdate(instructions: string, voice: string, transcri
           transcription,
           // server_vad with a long silence window: a hesitant learner reading an
           // expression pauses mid-phrase, and we must NOT cut them off. 1200ms of
-          // silence before the turn ends (vs the 500ms default); a slightly higher
-          // threshold ignores quiet background noise.
+          // silence before the turn ends (vs the 500ms default). threshold 0.7:
+          // at 0.6 users still saw phantom transcripts from noise/echo they never
+          // spoke — trade a bit of quiet-speech sensitivity for far fewer ghosts.
           turn_detection: {
             type: 'server_vad',
-            threshold: 0.6,
+            threshold: 0.7,
             prefix_padding_ms: 300,
             silence_duration_ms: 1200,
           },
@@ -109,6 +111,9 @@ export function classifyServerEvent(evt: ServerEvent): EventClassification {
   const forwardToClient = FORWARD_TYPES.has(evt.type);
   const text = evt.transcript?.trim();
   if (evt.type === 'conversation.item.input_audio_transcription.completed' && text) {
+    // Phantom guard: hallucinated no-speech fragments must not enter the
+    // conversation record (they'd pollute post-session analysis too).
+    if (isPhantomTranscript(text)) return { forwardToClient };
     return { forwardToClient, persist: { role: 'user', content: text } };
   }
   if ((evt.type === 'response.output_audio_transcript.done' || evt.type === 'response.audio_transcript.done') && text) {

@@ -41,8 +41,8 @@ describe('buildSessionUpdate', () => {
     expect(td.type).toBe('server_vad');
     // Long enough that a mid-phrase pause doesn't end the turn.
     expect(td.silence_duration_ms).toBeGreaterThanOrEqual(1000);
-    // Higher-than-default threshold to ignore quiet background sound.
-    expect(td.threshold).toBeGreaterThan(0.5);
+    // High threshold: phantom transcripts from noise/echo were showing up live.
+    expect(td.threshold).toBeGreaterThanOrEqual(0.7);
     expect(s.session.audio.input.noise_reduction.type).toBe('near_field');
   });
 
@@ -113,6 +113,22 @@ describe('classifyServerEvent', () => {
       transcript: '   ',
     });
     expect(r.persist).toBeUndefined();
+  });
+
+  it('does not persist phantom (noise-hallucinated) user transcripts', () => {
+    for (const transcript of ['.', '…', 'E.']) {
+      const r = classifyServerEvent({
+        type: 'conversation.item.input_audio_transcription.completed',
+        transcript,
+      });
+      expect(r.persist).toBeUndefined();
+    }
+    // Real short utterances still persist.
+    const real = classifyServerEvent({
+      type: 'conversation.item.input_audio_transcription.completed',
+      transcript: 'No.',
+    });
+    expect(real.persist).toEqual({ role: 'user', content: 'No.' });
   });
 });
 

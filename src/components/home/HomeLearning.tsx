@@ -143,10 +143,15 @@ export function HomeLearning({
               {expressions.map((e) => (
                 <div
                   key={e.id}
-                  className="flex items-baseline justify-between gap-3 rounded-xl border border-black/10 px-4 py-3 dark:border-white/15"
+                  className="rounded-xl border border-black/10 px-4 py-3 dark:border-white/15"
                 >
-                  <span className="font-medium">{e.english}</span>
-                  <span className="shrink-0 text-sm opacity-60">{e.chinese}</span>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="font-medium">{e.english}</span>
+                    <span className="shrink-0 text-sm opacity-60">{e.chinese}</span>
+                  </div>
+                  {e.example_sentence && (
+                    <p className="mt-1 text-sm leading-snug opacity-60">{e.example_sentence}</p>
+                  )}
                 </div>
               ))}
             </div>

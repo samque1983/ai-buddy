@@ -38,6 +38,13 @@ describe('explanationLanguage — bilingual (default)', () => {
   it('still keeps the English model sentence + practice in English', () => {
     expect(p.toLowerCase()).toContain('english');
   });
+
+  it('forbids announcing the language switch ("中文意思是"...) — just switch', () => {
+    // Live feedback: the model prefixed every Chinese line with "中文意思是",
+    // which is pure filler in a voice conversation.
+    expect(p).toContain('中文意思是');
+    expect(p.toLowerCase()).toMatch(/never announce|do not announce|without announcing/);
+  });
 });
 
 describe('explanationLanguage — english', () => {
