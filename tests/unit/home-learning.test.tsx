@@ -83,6 +83,32 @@ describe('<HomeLearning> SWR', () => {
     await waitFor(() => expect(screen.getByText('ielts fresh')).toBeTruthy());
   });
 
+  it('the picker never grays out or blocks while regenerate is pending (fully optimistic)', async () => {
+    const regens: Array<(v: unknown) => void> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        url.includes('regenerate')
+          ? new Promise((res) => {
+              regens.push(res);
+            })
+          : Promise.resolve({ ok: true, json: async () => ({ expressions: [expr('d1', 'daily word')] }) }),
+      ),
+    );
+    render(<HomeLearning userId="u1" initialActivePacks={['daily-core']} />);
+    await userEvent.click(screen.getByText('雅思')); // regenerate now pending
+    // Buttons stay enabled — no gray-out.
+    const dailyBtn = screen.getByText('日常地道表达').closest('button')!;
+    expect(dailyBtn.hasAttribute('disabled')).toBe(false);
+    // Switching back is NOT swallowed: selection follows the last tap immediately.
+    await userEvent.click(screen.getByText('日常地道表达'));
+    expect(dailyBtn.textContent).toContain('✓ 进行中');
+    // Late response from the superseded ielts regenerate must not clobber the view.
+    regens[0]?.({ ok: true, json: async () => ({ expressions: [expr('i9', 'late ielts', 'ielts')] }) });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByText('late ielts')).toBeNull();
+  });
+
   it('switch without cache falls back to the loading skeleton (no stale cross-content leak)', async () => {
     vi.stubGlobal(
       'fetch',
