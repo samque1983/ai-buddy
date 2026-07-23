@@ -190,6 +190,13 @@ export class SupabaseLearningStore implements LearningStore {
     return inserted;
   }
 
+  async deleteExpressions(expressionIds: string[]): Promise<void> {
+    if (expressionIds.length === 0) return;
+    // Progress rows first (FK dependent), then the expressions themselves.
+    await this.db.from('expression_progress').delete().in('expression_id', expressionIds);
+    await this.db.from('expressions').delete().in('id', expressionIds);
+  }
+
   async updateExpressionProgress(progressId: string, patch: Partial<ExpressionProgress>) {
     const clean = Object.fromEntries(
       Object.entries({ ...patch, updated_at: new Date().toISOString() }).filter(

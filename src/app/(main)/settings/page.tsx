@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { ContentPicker } from '@/components/ContentPicker';
 import type { CorrectionPreference, Profile } from '@/lib/types';
 
 export default function SettingsPage() {
@@ -66,52 +67,11 @@ export default function SettingsPage() {
       <section className="mt-6 space-y-6">
         <div>
           <div className="mb-2 font-medium">学习内容</div>
-          <div className="space-y-2">
-            {(
-              [
-                ['daily-core', '日常地道表达', '最常用的日常口语,高频优先', 'pack'],
-                ['ielts', '雅思', 'IELTS 口语/写作提分表达与搭配', 'pack'],
-                ['freechat', '自由畅聊', '不刷词,纯聊天,顺口教你更地道的说法', 'mode'],
-              ] as [string, string, string, 'pack' | 'mode'][]
-            ).map(([pack, label, desc, kind]) => {
-              const active = profile.active_packs?.includes(pack) ?? false;
-              return (
-                <button
-                  key={pack}
-                  onClick={() => {
-                    const current = profile.active_packs ?? ['daily-core'];
-                    let next: string[];
-                    if (pack === 'freechat') {
-                      // Free chat is its own mode — turning it on clears the packs.
-                      next = active ? ['daily-core'] : ['freechat'];
-                    } else {
-                      // Selecting a curriculum pack turns free chat off.
-                      const base = current.filter((p) => p !== 'freechat');
-                      next = active ? base.filter((p) => p !== pack) : [...base, pack];
-                    }
-                    save({ active_packs: next.length > 0 ? next : ['daily-core'] });
-                  }}
-                  className={`w-full rounded-xl border px-4 py-3 text-left transition ${
-                    active
-                      ? 'border-foreground bg-foreground text-background'
-                      : 'border-black/15 dark:border-white/20'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{label}</span>
-                    <span className="text-sm">{active ? '✓ 进行中' : '未启用'}</span>
-                  </div>
-                  <div className="mt-0.5 text-sm opacity-70">{desc}</div>
-                  {kind === 'mode' && (
-                    <div className="mt-0.5 text-xs opacity-50">与词库互斥,选它就不刷词</div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          <p className="mt-2 text-xs opacity-50">
-            词库可多选,下次对话生效。自由畅聊立即生效。
-          </p>
+          <ContentPicker
+            value={profile.active_packs}
+            onChange={(next) => save({ active_packs: next })}
+          />
+          <p className="mt-2 text-xs opacity-50">选一个方向。也可以在首页直接切换。</p>
         </div>
 
         <div>

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { resolveLandingRoute } from '@/lib/routing';
-import { DailyExpressions } from '@/components/home/DailyExpressions';
+import { HomeLearning } from '@/components/home/HomeLearning';
 import type { Character, Profile } from '@/lib/types';
 
 export default async function HomePage() {
@@ -61,7 +61,7 @@ export default async function HomePage() {
         </Link>
       </section>
 
-      <DailyExpressions />
+      <HomeLearning userId={user.id} initialActivePacks={profile!.active_packs ?? []} />
     </main>
   );
 }
