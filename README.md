@@ -10,7 +10,14 @@
   - STT: OpenAI Whisper
   - LLM: Anthropic Claude
   - TTS: OpenAI TTS
+- **实时语音(流畅模式)** — 两种传输:
+  - `webrtc`(默认):浏览器直连 OpenAI Realtime。低延迟,但**需要浏览器能直达 `api.openai.com`**(国内无代理时会一直卡"连接中")。
+  - `ws`:浏览器 ⇄ 本站自定义 server(`server.ts`)⇄ OpenAI,全程 WebSocket。浏览器只连本站,**国内可用**。用 `NEXT_PUBLIC_REALTIME_TRANSPORT=ws` 开启(见 `fly.toml` `[build.args]`);去掉即回滚到 WebRTC。
 - **测试**: Vitest + Testing Library
+
+> **部署两处易踩的坑**(自定义 server 用 `tsx` 运行,不经 `next build` 内联):
+> 1. `NEXT_PUBLIC_*` 在运行时是 `undefined` —— server 端要用的(如 Supabase URL/key)必须放进 `fly.toml` 的 **`[env]`**(运行时),不能只放 `[build.args]`。
+> 2. OpenAI Realtime **GA** 的 `session.update` 音频格式是**对象** `{ type: 'audio/pcm', rate: 24000 }`,不是字符串 `'pcm16'`(后者被静默拒绝 → 模型丢失人设/语言)。
 
 ## 本地启动
 
