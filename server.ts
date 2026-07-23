@@ -155,15 +155,42 @@ async function main() {
       upstream = new WebSocket(`${OPENAI_REALTIME_URL}?model=${encodeURIComponent(ctx.model)}`, {
         headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
       });
+
+      // The client starts streaming mic audio the instant its socket opens, but the
+      // OpenAI socket is still CONNECTING for a beat. Buffer pre-open frames (bounded)
+      // and flush after session.update, so we neither throw (ws.send on a CONNECTING
+      // socket) nor clip the user's first words.
+      let upstreamOpen = false;
+      const pendingUp: string[] = [];
+      const MAX_PENDING = 500;
+      const sendUpstream = (d: string) => {
+        if (upstreamOpen && upstream?.readyState === WebSocket.OPEN) {
+          try {
+            upstream.send(d);
+          } catch {
+            /* raced with close — drop */
+          }
+        } else if (pendingUp.length < MAX_PENDING) {
+          pendingUp.push(d);
+        }
+        // else: pre-open buffer full — drop (bounded, protects the 512MB box)
+      };
+
       const session = createOpenAIRelaySession({
         client: {
-          send: (d) => clientWs.send(d),
+          send: (d) => {
+            try {
+              clientWs.send(d);
+            } catch {
+              /* client socket closing — drop */
+            }
+          },
           close: (code, reason) => clientWs.close(code, reason),
           get bufferedAmount() {
             return clientWs.bufferedAmount;
           },
         },
-        upstream: { send: (d) => upstream?.send(d), close: () => upstream?.close() },
+        upstream: { send: sendUpstream, close: () => upstream?.close() },
         instructions: ctx.instructions,
         voice: ctx.voice,
         persist: (role, content) => {
@@ -171,7 +198,18 @@ async function main() {
         },
       });
 
-      upstream.on('open', () => session.onUpstreamOpen());
+      upstream.on('open', () => {
+        upstreamOpen = true;
+        session.onUpstreamOpen(); // session.update + response.create (sent directly)
+        for (const d of pendingUp) {
+          try {
+            upstream!.send(d);
+          } catch {
+            /* ignore */
+          }
+        }
+        pendingUp.length = 0;
+      });
       upstream.on('message', (data) => session.onUpstreamMessage(data.toString()));
       upstream.on('close', () => {
         session.onUpstreamClose();
