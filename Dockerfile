@@ -26,9 +26,18 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# The custom server (server.ts) runs the full Next build via next()'s programmatic
+# API and owns the realtime WS upgrade, so we ship the full node_modules + build +
+# source (tsx compiles server.ts and its @/ imports at runtime) rather than the
+# standalone bundle. tsx is a runtime dependency.
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/src ./src
+COPY --from=builder --chown=nextjs:nodejs /app/server.ts ./server.ts
+COPY --from=builder --chown=nextjs:nodejs /app/next.config.ts ./next.config.ts
+COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 USER nextjs
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["node_modules/.bin/tsx", "server.ts"]
