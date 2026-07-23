@@ -1,17 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ContentPicker } from '@/components/ContentPicker';
+import { readCachedExpressions, writeCachedExpressions } from '@/lib/cache/expressions-cache';
 import { normalizeActivePacks } from '@/lib/learning/content-packs';
 import { sessionModeFromPacks, type Expression } from '@/lib/types';
 
 /**
- * Home learning block: the content picker + today's expressions, wired so switching
- * content live-reconciles today's words.
+ * Home learning block: the content picker + today's expressions, SWR-cached so the
+ * main flow never waits on the network when we already know the answer.
  *
- *   pick content ─► save active_packs ─► POST /regenerate ─► refresh list
- *   freechat ─────► save ─────────────► show chat state (no words)
+ *   mount ──► cached list? paint instantly ──► revalidate in background
+ *   switch ─► save packs ─► cached list for that content? paint instantly
+ *             └─► regenerate ALWAYS fires (it reconciles the DB — the cache is
+ *                 only the fast first paint, never the source of truth)
+ *   freechat ► chat-state card (no words, no fetch)
  */
 export function HomeLearning({
   userId,
@@ -21,29 +25,33 @@ export function HomeLearning({
   initialActivePacks: string[];
 }) {
   const [activePacks, setActivePacks] = useState(() => normalizeActivePacks(initialActivePacks));
-  const [expressions, setExpressions] = useState<Expression[] | null>(null);
+  const [expressions, setExpressions] = useState<Expression[] | null>(() =>
+    sessionModeFromPacks(normalizeActivePacks(initialActivePacks)) === 'freechat'
+      ? []
+      : readCachedExpressions(userId, normalizeActivePacks(initialActivePacks)),
+  );
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Ignore out-of-order responses when the user switches quickly.
+  const requestSeq = useRef(0);
   const isFreechat = sessionModeFromPacks(activePacks) === 'freechat';
 
-  // Initial load of today's expressions (skip in free-chat — no words there).
+  // Mount: revalidate in the background (cache, if any, already painted above).
   useEffect(() => {
-    if (isFreechat) {
-      setExpressions([]);
-      return;
-    }
-    let cancelled = false;
+    if (isFreechat) return;
+    const seq = ++requestSeq.current;
+    const hadContent = expressions !== null;
     fetch('/api/expressions/daily')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('failed'))))
       .then((d: { expressions: Expression[] }) => {
-        if (!cancelled) setExpressions(d.expressions);
+        if (requestSeq.current !== seq) return; // superseded by a switch
+        setExpressions(d.expressions);
+        writeCachedExpressions(userId, activePacks, d.expressions);
       })
       .catch(() => {
-        if (!cancelled) setFailed(true);
+        // Background refresh failed — only surface it if we had nothing to show.
+        if (requestSeq.current === seq && !hadContent) setFailed(true);
       });
-    return () => {
-      cancelled = true;
-    };
     // Only on mount — switches are handled explicitly below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -54,6 +62,12 @@ export function HomeLearning({
     setBusy(true);
     setFailed(false);
     setActivePacks(normalized); // optimistic
+    const seq = ++requestSeq.current;
+
+    // Instant paint from cache while the server reconciles (falls back to skeleton).
+    const freechatNow = sessionModeFromPacks(normalized) === 'freechat';
+    const painted = freechatNow ? [] : readCachedExpressions(userId, normalized);
+    setExpressions(painted);
 
     // Persist the choice (same field Settings writes → auto-synced).
     await createClient()
@@ -61,23 +75,27 @@ export function HomeLearning({
       .update({ active_packs: normalized, updated_at: new Date().toISOString() })
       .eq('id', userId);
 
-    const freechatNow = sessionModeFromPacks(normalized) === 'freechat';
     if (freechatNow) {
-      setExpressions([]);
       setBusy(false);
       return;
     }
 
-    setExpressions(null); // loading
+    // Regenerate ALWAYS runs — it reconciles today's words in the DB (what the talk
+    // session will teach). The cached paint above just hides the wait.
     try {
       const res = await fetch('/api/expressions/daily/regenerate', { method: 'POST' });
       if (!res.ok) throw new Error('regenerate failed');
       const data = (await res.json()) as { expressions: Expression[] };
-      setExpressions(data.expressions);
+      if (requestSeq.current === seq) {
+        setExpressions(data.expressions);
+        writeCachedExpressions(userId, normalized, data.expressions);
+      }
     } catch {
-      setFailed(true);
+      // Keep whatever is on screen (cached list is still valid content); only
+      // surface an error when we had nothing to show at all.
+      if (requestSeq.current === seq && painted === null) setFailed(true);
     } finally {
-      setBusy(false);
+      if (requestSeq.current === seq) setBusy(false);
     }
   }
 
