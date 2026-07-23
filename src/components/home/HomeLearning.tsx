@@ -59,7 +59,10 @@ export function HomeLearning({
 
   async function switchContent(next: string[]) {
     const normalized = normalizeActivePacks(next);
-    if (busy || normalized[0] === activePacks[0]) return;
+    // Fully optimistic: never block or gray the picker while the server reconciles.
+    // Rapid re-switches are fine — requestSeq drops out-of-order responses, and the
+    // server converges on the profile's latest value (backend wins; low-freq flow).
+    if (normalized[0] === activePacks[0]) return;
     setBusy(true);
     setFailed(false);
     setActivePacks(normalized); // optimistic
@@ -82,7 +85,7 @@ export function HomeLearning({
       .eq('id', userId);
 
     if (freechatNow) {
-      setBusy(false);
+      if (requestSeq.current === seq) setBusy(false);
       return;
     }
 
@@ -109,7 +112,7 @@ export function HomeLearning({
     <section className="mt-6">
       <h2 className="text-xs font-semibold uppercase tracking-widest opacity-50">学习内容</h2>
       <div className="mt-3">
-        <ContentPicker value={activePacks} onChange={switchContent} disabled={busy} />
+        <ContentPicker value={activePacks} onChange={switchContent} />
       </div>
 
       {isFreechat ? (
