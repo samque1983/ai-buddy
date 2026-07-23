@@ -30,7 +30,14 @@ interface ServerEvent {
  * ⚠️ VERIFY-AT-DEPLOY: this exact payload against the live GA `gpt-realtime` WS is
  * the #1 thing to confirm on first deploy (see task_plan.md P2 audio-format note).
  */
-export function buildSessionUpdate(instructions: string, voice: string) {
+export function buildSessionUpdate(instructions: string, voice: string, transcriptionPrompt?: string) {
+  // Better model than 'mini' for accented non-native English, and bias it with the
+  // day's target phrases so the subtitle of the learner's own speech is accurate
+  // (the conversation model understands the audio directly, but transcription is a
+  // separate best-effort pass that otherwise mangles practice words).
+  const transcription: { model: string; prompt?: string } = { model: 'gpt-4o-transcribe' };
+  if (transcriptionPrompt) transcription.prompt = transcriptionPrompt;
+
   return {
     type: 'session.update',
     session: {
@@ -45,7 +52,7 @@ export function buildSessionUpdate(instructions: string, voice: string) {
           // Filter ambient noise before VAD/transcription so nearby sounds aren't
           // taken as the learner's answer (phone held close → near_field).
           noise_reduction: { type: 'near_field' },
-          transcription: { model: 'gpt-4o-mini-transcribe' },
+          transcription,
           // server_vad with a long silence window: a hesitant learner reading an
           // expression pauses mid-phrase, and we must NOT cut them off. 1200ms of
           // silence before the turn ends (vs the 500ms default); a slightly higher
@@ -66,6 +73,17 @@ export function buildSessionUpdate(instructions: string, voice: string) {
 /** Wraps base64 PCM16 into the OpenAI append event. */
 export function encodeAudioAppend(base64Audio: string): string {
   return JSON.stringify({ type: 'input_audio_buffer.append', audio: base64Audio });
+}
+
+/**
+ * A transcription-model prompt biased toward today's target phrases so the
+ * learner's subtitle transcribes exactly the words they're practicing.
+ */
+export function buildTranscriptionPrompt(expressions: { english: string }[]): string {
+  const base = 'Spoken English practice by a Chinese learner of English.';
+  const phrases = expressions.map((e) => e.english?.trim()).filter(Boolean);
+  if (phrases.length === 0) return base;
+  return `${base} The learner is practicing these phrases: ${phrases.join('; ')}.`;
 }
 
 // Events we relay to the client (audio to play, subtitles, speaking animation).
@@ -124,9 +142,11 @@ export function createOpenAIRelaySession(deps: {
   upstream: Upstream;
   instructions: string;
   voice: string;
+  /** Biases the transcription model toward today's target phrases (accurate subtitles). */
+  transcriptionPrompt?: string;
   persist: (role: 'user' | 'assistant', content: string) => void;
 }): OpenAIRelaySession {
-  const { client, upstream, instructions, voice, persist } = deps;
+  const { client, upstream, instructions, voice, transcriptionPrompt, persist } = deps;
   // One guarded teardown so close events (which cross-trigger each other) can't
   // re-enter or leak the opposite socket.
   let closed = false;
@@ -134,7 +154,7 @@ export function createOpenAIRelaySession(deps: {
   return {
     // --- OpenAI (upstream) side ---
     onUpstreamOpen() {
-      upstream.send(JSON.stringify(buildSessionUpdate(instructions, voice)));
+      upstream.send(JSON.stringify(buildSessionUpdate(instructions, voice, transcriptionPrompt)));
       // Kick off the assistant's greeting (sessionFlow: it speaks first). Server
       // VAD drives every turn after this.
       upstream.send(JSON.stringify({ type: 'response.create' }));

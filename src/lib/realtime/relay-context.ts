@@ -6,13 +6,21 @@ import { SupabaseLearningStore } from '@/lib/learning/supabase-store';
 import { todayInTimezone } from '@/lib/streak';
 import { toRealtimeVoice } from '@/lib/realtime/voice-map';
 import { ensureDailySession, loadConversationContext } from '@/lib/db/conversation-context';
+import { buildTranscriptionPrompt } from '@/lib/realtime/relay-openai';
 import type { createRelaySupabase } from '@/lib/realtime/relay-auth';
 
 type RelaySupabase = ReturnType<typeof createRelaySupabase>;
 type ExplainLanguage = 'bilingual' | 'english';
 
 export type RelayContextResult =
-  | { ok: true; instructions: string; voice: string; conversationId: string; model: string }
+  | {
+      ok: true;
+      instructions: string;
+      voice: string;
+      conversationId: string;
+      model: string;
+      transcriptionPrompt: string;
+    }
   | { ok: false; error: 'setup_incomplete' | 'daily_limit' | 'create_failed' };
 
 /**
@@ -51,6 +59,9 @@ export async function prepareRelayContext(
   const model = process.env.REALTIME_MODEL ?? 'gpt-realtime-mini';
   const instructions = buildRealtimeInstructions(ctx);
   const voice = toRealtimeVoice(ctx.character.tts_voice);
+  // Prime the transcription model with today's target phrases so the learner's
+  // subtitle is accurate for exactly the words they practice.
+  const transcriptionPrompt = buildTranscriptionPrompt(ctx.todaysExpressions);
 
   const { data, error } = await supabase
     .from('conversations')
@@ -59,5 +70,5 @@ export async function prepareRelayContext(
     .single<{ id: string }>();
   if (error || !data) return { ok: false, error: 'create_failed' };
 
-  return { ok: true, instructions, voice, conversationId: data.id, model };
+  return { ok: true, instructions, voice, conversationId: data.id, model, transcriptionPrompt };
 }
