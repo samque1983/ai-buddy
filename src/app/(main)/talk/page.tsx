@@ -229,6 +229,12 @@ export default function TalkPage() {
                 <li key={e.id} className="py-2 text-sm">
                   <div className="font-medium leading-snug break-words">{e.english}</div>
                   <div className="mt-0.5 leading-snug opacity-60 break-words">{e.chinese}</div>
+                  {e.example_sentence && (
+                    // Read-along line for the sentence beat ("Now the whole sentence: ...").
+                    <div className="mt-0.5 text-xs leading-snug opacity-50 break-words">
+                      {e.example_sentence}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

@@ -127,6 +127,12 @@ describe('buildConversationSystem', () => {
     expect(system.toLowerCase()).toContain('do not rush in');
   });
 
+  it('drills in two beats: the expression, then the FULL example sentence', () => {
+    // Live feedback: the phrase alone was practiced but never inside a sentence,
+    // so it didn't stick. Second pass = repeat the whole example sentence.
+    expect(system.toLowerCase()).toContain('full example sentence');
+  });
+
   it('lesson mode drills the daily expressions', () => {
     expect(system).toContain("Today's target expressions");
     expect(system).not.toContain('FREE CHAT');

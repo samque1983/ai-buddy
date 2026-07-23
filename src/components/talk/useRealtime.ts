@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { voiceErrorMessage } from '@/lib/env/browser';
+import { isPhantomTranscript } from '@/lib/realtime/transcript-filter';
 import type { TranscriptEntry } from './useConversation';
 
 export type RealtimeStatus = 'off' | 'connecting' | 'live' | 'error';
@@ -218,7 +219,9 @@ export function useRealtime() {
           switch (event.type) {
             case 'conversation.item.input_audio_transcription.completed': {
               const text = event.transcript?.trim();
-              if (text) {
+              // Phantom guard: VAD noise triggers produce hallucinated fragments —
+              // don't display them as the user's words or persist them.
+              if (text && !isPhantomTranscript(text)) {
                 setTranscript((t) => [...t, { role: 'user', text }]);
                 persist('user', text);
               }

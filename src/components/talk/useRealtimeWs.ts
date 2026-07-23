@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { voiceErrorMessage } from '@/lib/env/browser';
 import { downsample, floatTo16BitPCM } from '@/lib/audio/pcm';
+import { isPhantomTranscript } from '@/lib/realtime/transcript-filter';
 import { PCMPlayer } from './pcm-player';
 import type { TranscriptEntry } from './useConversation';
 
@@ -116,7 +117,10 @@ export function useRealtimeWs() {
               break;
             case 'conversation.item.input_audio_transcription.completed': {
               const t = event.transcript?.trim();
-              if (t) setTranscript((prev) => [...prev, { role: 'user', text: t }]);
+              // Phantom guard: VAD noise triggers produce hallucinated fragments
+              // the user never said — don't show them as the user's words.
+              if (t && !isPhantomTranscript(t))
+                setTranscript((prev) => [...prev, { role: 'user', text: t }]);
               break;
             }
             case 'response.output_audio_transcript.done':
