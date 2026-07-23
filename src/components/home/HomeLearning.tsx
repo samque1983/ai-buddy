@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ContentPicker } from '@/components/ContentPicker';
 import { readCachedExpressions, writeCachedExpressions } from '@/lib/cache/expressions-cache';
+import { readCachedProfile, writeCachedProfile } from '@/lib/cache/profile-cache';
 import { normalizeActivePacks } from '@/lib/learning/content-packs';
 import { sessionModeFromPacks, type Expression } from '@/lib/types';
 
@@ -69,7 +70,12 @@ export function HomeLearning({
     const painted = freechatNow ? [] : readCachedExpressions(userId, normalized);
     setExpressions(painted);
 
-    // Persist the choice (same field Settings writes → auto-synced).
+    // Persist the choice (same field Settings writes → auto-synced). Keep the local
+    // profile cache in step so the talk page's SWR paint reads the right content.
+    const cachedProfile = readCachedProfile();
+    if (cachedProfile && cachedProfile.id === userId) {
+      writeCachedProfile({ ...cachedProfile, active_packs: normalized });
+    }
     await createClient()
       .from('profiles')
       .update({ active_packs: normalized, updated_at: new Date().toISOString() })

@@ -5,11 +5,17 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { ContentPicker } from '@/components/ContentPicker';
+import {
+  clearCachedProfile,
+  readCachedProfile,
+  writeCachedProfile,
+} from '@/lib/cache/profile-cache';
 import type { CorrectionPreference, Profile } from '@/lib/types';
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [profile, setProfile] = useState<Profile | null>(null);
+  // SWR: paint instantly from the cached profile; the fetch below stays authoritative.
+  const [profile, setProfile] = useState<Profile | null>(() => readCachedProfile());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -24,13 +30,18 @@ export default function SettingsPage() {
         .select('*')
         .eq('id', user.id)
         .single<Profile>();
-      setProfile(data);
+      if (data) {
+        setProfile(data);
+        writeCachedProfile(data);
+      }
     });
   }, [router]);
 
   async function save(patch: Partial<Profile>) {
     if (!profile) return;
-    setProfile({ ...profile, ...patch });
+    const next = { ...profile, ...patch };
+    setProfile(next);
+    writeCachedProfile(next);
     setSaving(true);
     const supabase = createClient();
     await supabase
@@ -41,6 +52,7 @@ export default function SettingsPage() {
   }
 
   async function logout() {
+    clearCachedProfile(); // never paint this account for the next sign-in
     await createClient().auth.signOut();
     router.replace('/login');
   }

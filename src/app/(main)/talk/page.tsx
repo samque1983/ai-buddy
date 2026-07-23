@@ -8,8 +8,11 @@ import { useHandsFree } from '@/components/talk/useHandsFree';
 import { useRealtime } from '@/components/talk/useRealtime';
 import { useRealtimeWs } from '@/components/talk/useRealtimeWs';
 import { useRecorder } from '@/components/talk/useRecorder';
+import { readCachedExpressions } from '@/lib/cache/expressions-cache';
+import { readCachedProfile, writeCachedProfile } from '@/lib/cache/profile-cache';
 import { hasVoiceSupport, inAppBrowserLabel } from '@/lib/env/browser';
-import type { Expression } from '@/lib/types';
+import { normalizeActivePacks } from '@/lib/learning/content-packs';
+import type { Expression, Profile } from '@/lib/types';
 
 const PHASE_LABEL: Record<string, string> = {
   idle: '点击开始',
@@ -26,10 +29,16 @@ export default function TalkPage() {
   const router = useRouter();
   const conv = useConversation();
   const recorder = useRecorder();
-  const [subtitles, setSubtitles] = useState(true);
+  // SWR paint: cached profile answers subtitles + (with the expressions cache)
+  // today's reference strip instantly; the fetches below stay authoritative.
+  const [subtitles, setSubtitles] = useState(() => readCachedProfile()?.subtitles_enabled ?? true);
   const [hint, setHint] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
-  const [expressions, setExpressions] = useState<Expression[]>([]);
+  const [expressions, setExpressions] = useState<Expression[]>(() => {
+    const cached = readCachedProfile();
+    if (!cached) return [];
+    return readCachedExpressions(cached.id, normalizeActivePacks(cached.active_packs)) ?? [];
+  });
   const [refOpen, setRefOpen] = useState(true);
   // Chosen before the session starts (see the 开始对话 controls); whole-session.
   const [chineseHelp, setChineseHelp] = useState(true);
@@ -97,10 +106,13 @@ export default function TalkPage() {
       if (!user) return;
       const { data } = await supabase
         .from('profiles')
-        .select('subtitles_enabled')
+        .select('*')
         .eq('id', user.id)
-        .single<{ subtitles_enabled: boolean }>();
-      if (data) setSubtitles(data.subtitles_enabled);
+        .single<Profile>();
+      if (data) {
+        setSubtitles(data.subtitles_enabled);
+        writeCachedProfile(data); // keep the SWR paint fresh for next visit
+      }
     });
   }, []);
 
