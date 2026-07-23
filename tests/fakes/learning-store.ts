@@ -162,6 +162,11 @@ export class InMemoryLearningStore implements LearningStore {
     });
     return inserted;
   }
+  async deleteExpressions(expressionIds: string[]) {
+    const ids = new Set(expressionIds);
+    this.expressions = this.expressions.filter((e) => !ids.has(e.id));
+    this.progress = this.progress.filter((p) => !ids.has(p.expression_id));
+  }
   async updateExpressionProgress(progressId: string, patch: Partial<ExpressionProgress>) {
     const p = this.progress.find((x) => x.id === progressId);
     if (p) Object.assign(p, patch);

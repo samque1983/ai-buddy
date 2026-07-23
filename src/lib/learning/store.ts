@@ -81,6 +81,8 @@ export interface LearningStore {
     date: string,
     rows: NewExpression[],
   ): Promise<Expression[]>;
+  /** Deletes expressions AND their progress rows (used when switching content). */
+  deleteExpressions(expressionIds: string[]): Promise<void>;
   updateExpressionProgress(
     progressId: string,
     patch: Partial<ExpressionProgress>,

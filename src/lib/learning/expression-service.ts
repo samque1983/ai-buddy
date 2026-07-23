@@ -3,6 +3,7 @@ import type { EnglishLevel, Expression, Profile } from '@/lib/types';
 import { sessionModeFromPacks } from '@/lib/types';
 import { dailyExpressionsSchema } from './schemas';
 import { selectFromCurriculum, type CurriculumItem } from './curriculum-select';
+import { normalizeActivePacks, partitionForRegen } from './content-packs';
 import type { LearningStore, NewExpression } from './store';
 
 const DAILY_COUNT = 5;
@@ -53,7 +54,8 @@ export class ExpressionService {
 
     try {
       const profile = await this.store.getProfile(userId);
-      const rows = await this.buildDailyRows(userId, date, profile);
+      const packs = profile?.active_packs?.length ? profile.active_packs : ['daily-core'];
+      const rows = await this.buildRows(userId, date, profile, packs, DAILY_COUNT);
       return await this.store.insertExpressions(userId, session.id, date, rows);
     } catch (err) {
       await this.store.releaseExpressionGeneration(session.id);
@@ -61,27 +63,80 @@ export class ExpressionService {
     }
   }
 
-  /** Curriculum-first: pick from the user's active packs; fall back to the LLM only if short. */
-  private async buildDailyRows(
+  /**
+   * Reconcile today's expressions to the currently-selected content WITHOUT losing
+   * history: practiced words stay (with their long-term progress), untouched words
+   * from removed content are dropped, and new-content words fill back to DAILY_COUNT.
+   * Called when the user switches content on the Home picker.
+   *
+   *   today's expressions ─partition─► KEEP (practiced OR in-scope) ─┐
+   *                                    DROP (untouched, out-of-scope)─► delete + progress
+   *   fill from new packs (exclude KEEP + learned) ──────────────────► insert
+   *   return KEEP ∪ new
+   */
+  async regenerateDaily(userId: string, date: string): Promise<Expression[]> {
+    const profile = await this.store.getProfile(userId);
+    const packs = normalizeActivePacks(profile?.active_packs);
+
+    // Free-chat has no curriculum — leave today's rows untouched (the client shows a
+    // chat state); switching back regenerates normally.
+    if (sessionModeFromPacks(packs) === 'freechat') {
+      return this.store.getExpressionsByDate(userId, date);
+    }
+
+    const withProgress = await this.store.getExpressionsWithProgress(userId, date);
+    const items = withProgress.map(({ expression, progress }) => ({
+      id: expression.id,
+      pack: typeof expression.source?.pack === 'string' ? expression.source.pack : null,
+      practiced: progress.times_practiced > 0,
+      expression,
+    }));
+
+    const { keep, drop } = partitionForRegen(items, packs);
+    // No-op: nothing to drop and today is already full for this content.
+    if (drop.length === 0 && items.length >= DAILY_COUNT) {
+      return items.map((i) => i.expression);
+    }
+    if (drop.length > 0) await this.store.deleteExpressions(drop.map((d) => d.id));
+
+    const keptExpr = keep.map((k) => k.expression);
+    const need = DAILY_COUNT - keptExpr.length;
+    let added: Expression[] = [];
+    if (need > 0) {
+      const session = await this.store.ensureDailySession(userId, date);
+      const excludeEnglish = new Set(keptExpr.map((e) => e.english.toLowerCase().trim()));
+      const rows = await this.buildRows(userId, date, profile, packs, need, excludeEnglish);
+      if (rows.length > 0) {
+        added = await this.store.insertExpressions(userId, session.id, date, rows);
+      }
+    }
+    return [...keptExpr, ...added];
+  }
+
+  /** Curriculum-first: pick `count` from `packs`; fall back to the LLM only if short. */
+  private async buildRows(
     userId: string,
     date: string,
     profile: Profile | null,
+    packs: string[],
+    count: number,
+    excludeExtra: Set<string> = new Set(),
   ): Promise<NewExpression[]> {
-    const activePacks = profile?.active_packs?.length ? profile.active_packs : ['daily-core'];
     // Gate by difficulty (allow one tier above), then rank order does "common first".
     const maxTier = (LEVEL_TIER[profile?.english_level ?? 'elementary'] ?? 2) + 1;
     const learned = await this.store.getLearnedEnglish(userId);
+    const exclude = new Set([...learned, ...excludeExtra]);
     const chosen = new Set<string>();
 
     const packLists: CurriculumItem[][] = [];
-    for (const pack of activePacks) {
+    for (const pack of packs) {
       const items = (await this.store.getCurriculum(pack)).filter(
-        (i) => LEVEL_TIER[i.level] <= maxTier && !learned.has(i.english.toLowerCase().trim()),
+        (i) => LEVEL_TIER[i.level] <= maxTier && !exclude.has(i.english.toLowerCase().trim()),
       );
       packLists.push(items);
     }
 
-    const picked = selectFromCurriculum(packLists, DAILY_COUNT);
+    const picked = selectFromCurriculum(packLists, count);
     const rows: NewExpression[] = picked.map((i) => {
       chosen.add(i.english.toLowerCase().trim());
       return {
@@ -96,9 +151,8 @@ export class ExpressionService {
     });
 
     // Curriculum exhausted (or empty) — top up with LLM-generated expressions.
-    if (rows.length < DAILY_COUNT) {
-      const need = DAILY_COUNT - rows.length;
-      const generated = await this.generate(userId, date, profile, need, learned, chosen);
+    if (rows.length < count) {
+      const generated = await this.generate(userId, date, profile, count - rows.length, exclude, chosen);
       rows.push(...generated);
     }
 
