@@ -15,8 +15,9 @@ describe('buildSessionUpdate', () => {
       audio: {
         input: {
           format: { type: string; rate: number };
+          noise_reduction: { type: string };
           transcription: unknown;
-          turn_detection: { type: string };
+          turn_detection: { type: string; threshold: number; silence_duration_ms: number };
         };
         output: { format: { type: string; rate: number }; voice: string };
       };
@@ -34,8 +35,14 @@ describe('buildSessionUpdate', () => {
     expect(s.session.audio.output.format).toEqual({ type: 'audio/pcm', rate: 24000 });
   });
 
-  it('enables VAD and input transcription (matches the WebRTC mint config)', () => {
-    expect(s.session.audio.input.turn_detection.type).toBe('semantic_vad');
+  it('waits for hesitant learners (server_vad, long silence) and filters noise', () => {
+    const td = s.session.audio.input.turn_detection;
+    expect(td.type).toBe('server_vad');
+    // Long enough that a mid-phrase pause doesn't end the turn.
+    expect(td.silence_duration_ms).toBeGreaterThanOrEqual(1000);
+    // Higher-than-default threshold to ignore quiet background sound.
+    expect(td.threshold).toBeGreaterThan(0.5);
+    expect(s.session.audio.input.noise_reduction.type).toBe('near_field');
     expect(s.session.audio.input.transcription).toBeTruthy();
   });
 });

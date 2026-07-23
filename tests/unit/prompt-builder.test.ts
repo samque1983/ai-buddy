@@ -122,6 +122,11 @@ describe('buildConversationSystem', () => {
     expect(englishOnly).not.toContain('EXPLAIN IN CHINESE TOO');
   });
 
+  it('refuses to score a non-attempt (waits for a real try before giving a number)', () => {
+    expect(system).toContain('ONLY score a REAL attempt');
+    expect(system.toLowerCase()).toContain('do not rush in');
+  });
+
   it('lesson mode drills the daily expressions', () => {
     expect(system).toContain("Today's target expressions");
     expect(system).not.toContain('FREE CHAT');
