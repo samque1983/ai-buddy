@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildSessionUpdate,
+  buildTranscriptionPrompt,
   classifyServerEvent,
   encodeAudioAppend,
   createOpenAIRelaySession,
@@ -16,7 +17,7 @@ describe('buildSessionUpdate', () => {
         input: {
           format: { type: string; rate: number };
           noise_reduction: { type: string };
-          transcription: unknown;
+          transcription: { model: string; prompt?: string };
           turn_detection: { type: string; threshold: number; silence_duration_ms: number };
         };
         output: { format: { type: string; rate: number }; voice: string };
@@ -43,7 +44,26 @@ describe('buildSessionUpdate', () => {
     // Higher-than-default threshold to ignore quiet background sound.
     expect(td.threshold).toBeGreaterThan(0.5);
     expect(s.session.audio.input.noise_reduction.type).toBe('near_field');
-    expect(s.session.audio.input.transcription).toBeTruthy();
+  });
+
+  it('uses the accurate transcription model and carries the phrase-bias prompt', () => {
+    expect(s.session.audio.input.transcription.model).toBe('gpt-4o-transcribe');
+    const withPrompt = buildSessionUpdate('x', 'marin', 'practice: hello') as typeof s;
+    expect(withPrompt.session.audio.input.transcription.prompt).toBe('practice: hello');
+  });
+});
+
+describe('buildTranscriptionPrompt', () => {
+  it("primes the transcriber with today's target phrases", () => {
+    const p = buildTranscriptionPrompt([{ english: "I'm gonna head out." }, { english: 'no worries' }]);
+    expect(p).toContain("I'm gonna head out.");
+    expect(p).toContain('no worries');
+  });
+
+  it('falls back to a generic English-practice prompt with no expressions', () => {
+    const p = buildTranscriptionPrompt([]);
+    expect(p.toLowerCase()).toContain('english');
+    expect(p).not.toContain('practicing these phrases');
   });
 });
 

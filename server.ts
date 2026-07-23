@@ -193,6 +193,7 @@ async function main() {
         upstream: { send: sendUpstream, close: () => upstream?.close() },
         instructions: ctx.instructions,
         voice: ctx.voice,
+        transcriptionPrompt: ctx.transcriptionPrompt,
         persist: (role, content) => {
           void appendMessage(supabase, ctx.conversationId, role, content).catch(() => {});
         },
