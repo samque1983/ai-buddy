@@ -42,8 +42,20 @@ export function buildSessionUpdate(instructions: string, voice: string) {
         // language, wrong audio → the model babbles in a random language).
         input: {
           format: { type: 'audio/pcm', rate: 24000 },
+          // Filter ambient noise before VAD/transcription so nearby sounds aren't
+          // taken as the learner's answer (phone held close → near_field).
+          noise_reduction: { type: 'near_field' },
           transcription: { model: 'gpt-4o-mini-transcribe' },
-          turn_detection: { type: 'semantic_vad' },
+          // server_vad with a long silence window: a hesitant learner reading an
+          // expression pauses mid-phrase, and we must NOT cut them off. 1200ms of
+          // silence before the turn ends (vs the 500ms default); a slightly higher
+          // threshold ignores quiet background noise.
+          turn_detection: {
+            type: 'server_vad',
+            threshold: 0.6,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 1200,
+          },
         },
         output: { format: { type: 'audio/pcm', rate: 24000 }, voice },
       },
