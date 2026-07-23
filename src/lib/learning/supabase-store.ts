@@ -18,9 +18,28 @@ import type {
   TranscriptRow,
 } from './store';
 import type { CurriculumItem } from './curriculum-select';
+import type { LearningSummaryContent } from './schemas';
 
 export class SupabaseLearningStore implements LearningStore {
   constructor(private db: SupabaseClient) {}
+
+  async getProgressCounts(userId: string): Promise<Record<string, number>> {
+    const { data } = await this.db
+      .from('expression_progress')
+      .select('status')
+      .eq('user_id', userId)
+      .returns<{ status: string }[]>();
+    const counts: Record<string, number> = {};
+    for (const row of data ?? []) counts[row.status] = (counts[row.status] ?? 0) + 1;
+    return counts;
+  }
+
+  async saveLearningSummary(userId: string, content: LearningSummaryContent): Promise<void> {
+    const { error } = await this.db
+      .from('learning_summaries')
+      .upsert({ user_id: userId, content, updated_at: new Date().toISOString() });
+    if (error) throw new Error(`save learning summary failed: ${error.message}`);
+  }
 
   async getConversation(id: string): Promise<Conversation | null> {
     const { data } = await this.db.from('conversations').select('*').eq('id', id).single<Conversation>();

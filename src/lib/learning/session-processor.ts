@@ -1,5 +1,6 @@
 import type { LlmService } from '@/lib/services/types';
 import { computeStreak, todayInTimezone } from '@/lib/streak';
+import { LearningSummaryService } from './learning-summary';
 import { reviewTransition } from './review-transition';
 import { postSessionSchema } from './schemas';
 import type { LearningStore } from './store';
@@ -137,6 +138,14 @@ export class SessionProcessor {
       // the retry path can't double-count streaks or talk time.
       await applyAccounting();
       await this.store.setConversationStatus(conversationId, 'finalized');
+
+      // Whole-journey summary refresh — best-effort AFTER the conversation is
+      // finalized: a summary failure must never fail (or re-run) the pipeline.
+      try {
+        await new LearningSummaryService(this.llm, this.store).refresh(conversation.user_id);
+      } catch (err) {
+        console.error('learning summary refresh failed', conversation.user_id, err);
+      }
     } catch (err) {
       await this.store.setConversationStatus(conversationId, 'failed');
       throw err;

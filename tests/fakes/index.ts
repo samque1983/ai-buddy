@@ -38,6 +38,12 @@ export class FakeLlm implements LlmService {
     this.structured = structured;
   }
 
+  private structuredByName = new Map<string, unknown>();
+  /** Canned payload for a specific schemaName (falls back to the default otherwise). */
+  setStructuredFor(schemaName: string, structured: unknown) {
+    this.structuredByName.set(schemaName, structured);
+  }
+
   async extractStructured<T>(params: {
     schema: z.ZodType<T>;
     schemaName: string;
@@ -45,7 +51,10 @@ export class FakeLlm implements LlmService {
     system: string;
   }): Promise<T> {
     this.extractCalls.push({ schemaName: params.schemaName, input: params.input });
-    return params.schema.parse(this.structured);
+    const payload = this.structuredByName.has(params.schemaName)
+      ? this.structuredByName.get(params.schemaName)
+      : this.structured;
+    return params.schema.parse(payload);
   }
 }
 
