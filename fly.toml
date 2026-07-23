@@ -13,6 +13,9 @@ primary_region = "sin"
     # anon key is a public client identifier (access is enforced by RLS)
     NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqa2N0eW9kZ21pcWRvZ2V4c2VlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1Njc0MzEsImV4cCI6MjEwMDE0MzQzMX0.R7FNJXkM-bsZ7TK0kd2L27JjqnQoQZ6qfZovAyQfUiE"
     NEXT_PUBLIC_APP_URL = "https://ai-english-buddy.fly.dev"
+    # Stage-2: enable the server WS relay for 流畅模式 (browser ⇄ our server ⇄ OpenAI).
+    # Roll back instantly by removing this line (or setting to "webrtc") + redeploy.
+    NEXT_PUBLIC_REALTIME_TRANSPORT = "ws"
 
 [env]
   # Also needed at RUNTIME (not just build): the custom server (server.ts) runs under
