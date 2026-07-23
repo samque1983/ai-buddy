@@ -15,6 +15,12 @@ primary_region = "sin"
     NEXT_PUBLIC_APP_URL = "https://ai-english-buddy.fly.dev"
 
 [env]
+  # Also needed at RUNTIME (not just build): the custom server (server.ts) runs under
+  # tsx, which does NOT inline NEXT_PUBLIC_* the way `next build` does. Without these
+  # the relay's Supabase client throws on every WS upgrade. Public values (anon key is
+  # a public identifier; access is enforced by RLS).
+  NEXT_PUBLIC_SUPABASE_URL = "https://djkctyodgmiqdogexsee.supabase.co"
+  NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqa2N0eW9kZ21pcWRvZ2V4c2VlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1Njc0MzEsImV4cCI6MjEwMDE0MzQzMX0.R7FNJXkM-bsZ7TK0kd2L27JjqnQoQZ6qfZovAyQfUiE"
   REALTIME_MODEL = "gpt-realtime"
   LLM_PROVIDER = "anthropic"
   LLM_MODEL = "claude-sonnet-5"

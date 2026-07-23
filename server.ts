@@ -58,6 +58,22 @@ async function main() {
   });
 
   async function handleRelayUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
+    // Any synchronous/async throw here (e.g. misconfig) must destroy the socket, not
+    // leave the client hanging or surface as an unhandledRejection.
+    try {
+      await acceptRelayUpgrade(req, socket, head);
+    } catch (err) {
+      console.error('relay upgrade failed:', err);
+      try {
+        socket.write('HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n');
+      } catch {
+        /* socket already gone */
+      }
+      socket.destroy();
+    }
+  }
+
+  async function acceptRelayUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
     // Reject unauthenticated / over-capacity upgrades BEFORE accepting the socket
     // or opening any OpenAI connection.
     const supabase = createRelaySupabase(req.headers.cookie);
