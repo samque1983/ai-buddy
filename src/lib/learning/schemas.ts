@@ -22,6 +22,27 @@ export const dailyExpressionsSchema = z.object({
 });
 export type DailyExpressionsOutput = z.infer<typeof dailyExpressionsSchema>;
 
+const bilingual = z.object({
+  zh: z.string().describe('简体中文,口语化,一句话'),
+  en: z.string().describe('Natural English, one sentence'),
+});
+
+/** Whole-journey learning summary shown on the stats page (bilingual). */
+export const learningSummarySchema = z.object({
+  overall: bilingual.describe("The learner's current overall situation, warm and honest"),
+  strengths: z
+    .array(bilingual)
+    .min(1)
+    .max(3)
+    .describe('Concrete recent progress points, most meaningful first'),
+  improvements: z
+    .array(bilingual)
+    .min(1)
+    .max(3)
+    .describe('The highest-leverage things to work on next, actionable'),
+});
+export type LearningSummaryContent = z.infer<typeof learningSummarySchema>;
+
 export const postSessionSchema = z.object({
   summary: z.object({
     highlights: z.array(z.string()).describe('2-3 things the user did well, specific'),

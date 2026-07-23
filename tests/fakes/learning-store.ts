@@ -17,6 +17,7 @@ import type {
   TranscriptRow,
 } from '@/lib/learning/store';
 import type { CurriculumItem } from '@/lib/learning/curriculum-select';
+import type { LearningSummaryContent } from '@/lib/learning/schemas';
 
 let idCounter = 0;
 const nextId = () => `id-${++idCounter}`;
@@ -53,6 +54,7 @@ export class InMemoryLearningStore implements LearningStore {
   corrections: Correction[] = [];
   memories: UserMemory[] = [];
   summaries = new Map<string, { summary: ConversationSummary; tomorrowGreeting: string }>();
+  learningSummaries = new Map<string, LearningSummaryContent>();
 
   async getConversation(id: string) {
     return this.conversations.get(id) ?? null;
@@ -202,5 +204,15 @@ export class InMemoryLearningStore implements LearningStore {
         ...r,
       });
     }
+  }
+  async getProgressCounts(userId: string) {
+    const counts: Record<string, number> = {};
+    for (const p of this.progress.filter((x) => x.user_id === userId)) {
+      counts[p.status] = (counts[p.status] ?? 0) + 1;
+    }
+    return counts;
+  }
+  async saveLearningSummary(userId: string, content: LearningSummaryContent) {
+    this.learningSummaries.set(userId, content);
   }
 }

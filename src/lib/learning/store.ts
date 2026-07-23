@@ -9,6 +9,7 @@ import type {
   UserMemory,
 } from '@/lib/types';
 import type { CurriculumItem } from './curriculum-select';
+import type { LearningSummaryContent } from './schemas';
 
 export interface TranscriptRow {
   role: 'user' | 'assistant';
@@ -100,4 +101,10 @@ export interface LearningStore {
   ): Promise<void>;
   getMemories(userId: string): Promise<UserMemory[]>;
   saveMemories(userId: string, conversationId: string, rows: NewMemory[]): Promise<void>;
+
+  // whole-journey learning summary (stats page card)
+  /** Progress row counts grouped by status (e.g. { mastered: 3, practicing: 5 }). */
+  getProgressCounts(userId: string): Promise<Record<string, number>>;
+  /** Upserts the user's single learning-summary row. */
+  saveLearningSummary(userId: string, content: LearningSummaryContent): Promise<void>;
 }
