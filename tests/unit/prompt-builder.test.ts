@@ -152,6 +152,21 @@ describe('buildConversationSystem', () => {
     expect(freechat).toContain('Emma'); // persona still there
   });
 
+  it('free-chat still carries the spaced review — woven in, not drilled', () => {
+    // The memory curve must not break just because the user prefers free chat.
+    const freechat = buildConversationSystem({
+      character,
+      profile,
+      memories,
+      todaysExpressions: [],
+      reviewExpressions: [{ ...expressions[0], last_score: 4 }],
+      mode: 'freechat',
+    });
+    expect(freechat).toContain("I'm gonna head out."); // the due word is present
+    expect(freechat.toLowerCase()).toContain('weave'); // gentle instruction
+    expect(freechat).not.toContain('REVIEW FIRST'); // no lesson-style drilling
+  });
+
   it('omits the memory section when there are no memories', () => {
     const noMem = buildConversationSystem({
       character,

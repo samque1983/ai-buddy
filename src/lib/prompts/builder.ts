@@ -31,7 +31,7 @@ export function buildConversationSystem(ctx: ConversationContext): string {
     m.characterPersona(ctx.character),
     // Free chat replaces the lesson drill with conversation + naturalness upgrades.
     ...(ctx.mode === 'freechat'
-      ? [m.freeChatFlow(), m.naturalnessUpgrades()]
+      ? [m.freeChatFlow(), m.naturalnessUpgrades(), m.freechatReviewWeave(ctx.reviewExpressions)]
       : [m.sessionFlow(), m.reviewExpressions(ctx.reviewExpressions), m.dailyExpressions(ctx.todaysExpressions)]),
     m.correctionStyle(ctx.profile.correction_preference),
     m.explanationLanguage(ctx.explainLanguage ?? 'bilingual'),
