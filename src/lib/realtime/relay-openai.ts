@@ -37,12 +37,15 @@ export function buildSessionUpdate(instructions: string, voice: string) {
       type: 'realtime',
       instructions,
       audio: {
+        // GA wants an object, not the string 'pcm16' — a string is rejected with a
+        // type error, which silently drops the WHOLE session.update (no persona, no
+        // language, wrong audio → the model babbles in a random language).
         input: {
-          format: 'pcm16',
+          format: { type: 'audio/pcm', rate: 24000 },
           transcription: { model: 'gpt-4o-mini-transcribe' },
           turn_detection: { type: 'semantic_vad' },
         },
-        output: { format: 'pcm16', voice },
+        output: { format: { type: 'audio/pcm', rate: 24000 }, voice },
       },
     },
   };
@@ -131,6 +134,9 @@ export function createOpenAIRelaySession(deps: {
       } catch {
         return; // non-JSON frame — ignore
       }
+      // Surface OpenAI-side errors (e.g. a rejected session.update) to server logs so
+      // schema/config problems are diagnosable without the client console.
+      if (evt.type === 'error') console.error('openai realtime error:', raw);
       const { forwardToClient, persist: p } = classifyServerEvent(evt);
       if (forwardToClient) {
         const isAudio = AUDIO_DELTA_TYPES.has(evt.type);

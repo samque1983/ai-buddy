@@ -13,8 +13,12 @@ describe('buildSessionUpdate', () => {
     session: {
       instructions: string;
       audio: {
-        input: { format: string; transcription: unknown; turn_detection: { type: string } };
-        output: { format: string; voice: string };
+        input: {
+          format: { type: string; rate: number };
+          transcription: unknown;
+          turn_detection: { type: string };
+        };
+        output: { format: { type: string; rate: number }; voice: string };
       };
     };
   };
@@ -25,9 +29,9 @@ describe('buildSessionUpdate', () => {
     expect(s.session.audio.output.voice).toBe('marin');
   });
 
-  it('uses pcm16 both ways so raw audio can be relayed', () => {
-    expect(s.session.audio.input.format).toBe('pcm16');
-    expect(s.session.audio.output.format).toBe('pcm16');
+  it('uses the GA object audio format (audio/pcm 24k), not the rejected "pcm16" string', () => {
+    expect(s.session.audio.input.format).toEqual({ type: 'audio/pcm', rate: 24000 });
+    expect(s.session.audio.output.format).toEqual({ type: 'audio/pcm', rate: 24000 });
   });
 
   it('enables VAD and input transcription (matches the WebRTC mint config)', () => {
