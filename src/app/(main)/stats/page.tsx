@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { groupCorrections } from '@/lib/learning/knowledge-groups';
 import type { LearningSummaryContent } from '@/lib/learning/schemas';
 import type { Correction, ExpressionStatus, Profile } from '@/lib/types';
 
@@ -38,12 +39,14 @@ export default async function StatsPage() {
         .select('expression_id, status, last_score')
         .eq('user_id', user.id)
         .returns<ReviewRow[]>(),
+      // Full correction history (newest first) — this IS the learned-knowledge record,
+      // and in free-chat mode it's the only learning artifact there is.
       supabase
         .from('corrections')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(5)
+        .limit(200)
         .returns<Correction[]>(),
       // Graceful when the table doesn't exist yet (code can deploy before db push).
       supabase
@@ -57,6 +60,7 @@ export default async function StatsPage() {
         ),
     ]);
   const summary = summaryRes?.data?.content ?? null;
+  const knowledgeGroups = groupCorrections(corrections ?? []);
 
   const rows = progress ?? [];
   const mastered = rows.filter((p) => p.status === 'mastered').length;
@@ -163,17 +167,37 @@ export default async function StatsPage() {
         </section>
       )}
 
-      {(corrections?.length ?? 0) > 0 && (
+      {knowledgeGroups.length > 0 && (
         <section className="mt-8">
           <h2 className="text-xs font-semibold uppercase tracking-widest opacity-50">
-            最近的纠错
+            📚 学到的知识点(共 {corrections!.length} 条)
           </h2>
-          <div className="mt-3 space-y-3">
-            {corrections!.map((c) => (
-              <div key={c.id} className="rounded-2xl border border-black/10 p-4 dark:border-white/15">
-                <p className="text-sm line-through opacity-50">{c.original}</p>
-                <p className="mt-1 font-medium">{c.improved}</p>
-              </div>
+          <p className="mt-1 text-xs opacity-50">
+            历史以来所有被纠正过的点和学到的更地道说法,按类别整理,自由畅聊学到的也都在。
+          </p>
+          <div className="mt-3 space-y-2">
+            {knowledgeGroups.map((group, gi) => (
+              <details
+                key={group.key}
+                open={gi === 0}
+                className="rounded-2xl border border-black/10 dark:border-white/15"
+              >
+                <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">
+                  {group.label}
+                  <span className="ml-2 text-xs opacity-50">{group.items.length} 条</span>
+                </summary>
+                <div className="space-y-3 border-t border-black/5 px-4 py-3 dark:border-white/10">
+                  {group.items.map((c) => (
+                    <div key={c.id}>
+                      <p className="text-sm line-through opacity-50">{c.original}</p>
+                      <p className="mt-0.5 font-medium">{c.improved}</p>
+                      {c.explanation && (
+                        <p className="mt-0.5 text-xs leading-relaxed opacity-60">{c.explanation}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </details>
             ))}
           </div>
         </section>
